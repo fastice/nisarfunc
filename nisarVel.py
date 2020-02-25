@@ -8,371 +8,192 @@ Created on Mon Feb 10 11:08:15 2020
 
 # geoimage.py
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
-from utilities.readImage import readImage
-from utilities.myerror import myerror
-#from utilities import geodat
+from nisarfunc import readGeoTiff
+from nisarfunc import nisarBase2D, parseDatesFromMeta, parseDatesFromDirName
 import os
-#import urllib.request
-#from osgeo.gdalconst import *
-from osgeo import gdal,  osr
 from datetime import datetime
-import functools
 import xarray as xr
 import matplotlib.pylab as plt
-#----------------------------------------------------------------------------------------------------------------------------------------------------
-# class defintion for an image object, which covers PS data described by a geodat
-#----------------------------------------------------------------------------------------------------------------------------------------------------
-class nisarVel :
-    """ nisar velocity map """
-    def __init__(self,vx=None,vy=None,v=None,ex=None,ey=None,e=None,sx=None,sy=None,x0=None,y0=None,dx=None,dy=None,verbose=True) :
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import math
+from osgeo import gdal
+
+
+class nisarVel(nisarBase2D):
+    ''' This class creates objects to contain nisar velocity and/or error maps.
+    The data can be pass in on init, or read from a geotiff.
+
+    Which variables that are used are specified with useVelocity, useErrrors,
+    and, noSpeedand (see nisarVel.readDatafromTiff).
+
+    The variables used are returned as a list (e.g., ["vx","vy"])) by
+    nisarVel.myVariables(useVelocity=True, useErrors=False, noSpeed=True). '''
+
+    labelFontSize = 16  # Font size for plot labels
+    plotFontSize = 15  # Font size for plots
+    legendFontSize = 15  # Font size for legends
+
+    def __init__(self, vx=None, vy=None, v=None, ex=None, ey=None, e=None,
+                 sx=None, sy=None, x0=None, y0=None, dx=None, dy=None,
+                 epsg=None, useXR=False, verbose=True):
         ''' initialize a nisar velocity object'''
-        self.sx,self.sy,self.x0,self.y0,self.dx,self.dy=sx,sy,x0,y0,dx,dy
-        self.xx,self.yy=[],[]
-        self.xGrid,self.yGrid=[],[]
-        self.useXR=False
-        self.vx,self.vy,self.vv,self.ex,self.ey=vx,vy,v,ex,ey
-        self.verbose=verbose
-        
+        nisarBase2D.__init__(self, sx=sx, sy=sy, x0=x0, y0=y0, dx=dx, dy=dy,
+                             epsg=epsg, useXR=useXR)
+        self.vx, self.vy, self.vv, self.ex, self.ey = vx, vy, v, ex, ey
+        self.vxInterp, self.vyInterp, self.vvInterp = None, None, None
+        self.exInterp, self.eyInterp = None, None
+        self.verbose = verbose
+        self.noDataDict = {'vx': -2.0e9, 'vy': -2.0e9, 'v': -1.0,
+                           'ex': -1.0, 'ey': -1.0}
+        self.gdalType = gdal.GDT_Float32  # data type for velocity products
 
-    #--------------------------------------------------------------------------
-    # def setup xy limits
-    #--------------------------------------------------------------------------
-    def xyCoordinates(self) :
-        """ xyCoordinates - setup xy coordinates in km """
-        # check specs exist
-        if None in (self.x0, self.y0, self.sx, self.sy, self.dx,self.dy) :
-            myerror(f'nisarVel.xyCoordinates: x0,y0,sx,sy,dx,dy undefined '\
-                     ' {self.x0},{self.y0},s{elf.sx},{self.sy},{self.dx},{self.dy}')
-        # remember arange will not generate value for sx*dx (its doing sx-1)
-        self.xx=np.arange(self.x0,self.x0+self.sx*self.dx,self.dx)
-        self.yy=np.arange(self.y0,self.y0+self.sy*self.dy,self.dy)
-        # force the right length
-        self.xx,self.yy=self.xx[0:self.sx],self.yy[0:self.sy]   
-        
-
-    #--------------------------------------------------------------------------
-    # Compute matrix of xy grid points
-    #--------------------------------------------------------------------------    
-    def xyGrid(self) :
-        #
-        # if one done grid points not computed, then compute
-        if len(self.xx) == 0 :
-            self.xyCoordinates()
-        #
-        # setup array
-        self.xGrid,self.yGrid=np.zeros((self.y,self.sx)),np.zeros((self.sy,self.sx))
-        for i in range(0,self.sy) :
-            self.xGrid[i,:]=self.xx
-        for i in range(0,self.sx) :
-            self.yGrid[:,i]=self.yy  
-            
-    def parseMyMeta(self,metaFile) :
-        ''' get get from meta file '''
-        print(metaFile)
-        fp=open(metaFile)
-        dates=[]
-        for line in fp :
-            if 'MM:DD:YYYY' in line :
-                tmp=line.split('=')[-1].strip()
-                dates.append(datetime.strptime(tmp,"%b:%d:%Y"))
-                if len(dates) == 2 :
-                    break
-        if len(dates) != 2 :
-            return None
-        fp.close()
-        return dates[0]+(dates[1]-dates[0])*0.5
-  
-    def parseVelCentralDate(self) :
-
-        if(self.fileName != None) :
-            metaFile=self.fileName + '.meta'
-            if not os.path.exists(metaFile) :
-                return None
-            return self.parseMyMeta(metaFile)
-        return None
-        
-
-    def myVariables(self,useVelocity,useErrors,noSpeed=False) :
-        ''' select variables '''
-        myVars=[]
-        if useVelocity :
-            myVars+=['vx','vy']
-        if not noSpeed :
-            myVars+=['vv']
-        if useErrors :
-            myVars+=['ex','ey']
+    def myVariables(self, useVelocity, useErrors, noSpeed=False):
+        ''' Based on the flags, this routine determines which velocity/error
+        fields that an instance will contain. '''
+        myVars = []
+        if useVelocity:
+            myVars += ['vx', 'vy']
+        if not noSpeed:
+            myVars += ['vv']
+        if useErrors:
+            myVars += ['ex', 'ey']
         return myVars
-                   
-    #--------------------------------------------------------------------------
-    #  setup interpolation functions
-    #--------------------------------------------------------------------------
-    def setupInterp(self,useVelocity=True,useErrors=False) :
-        """ set up interpolation for scalar (xInterp) or velocity/eror (vxInterp,vyInterp,vInterp)  """ 
-        if len(self.xx) <= 0 :
-            self.xyCoordinates()
-        # setup interp - flip xy for row colum
-        myVars=self.myVariables(useVelocity,useErrors)
-        #
-        if self.useXR :
-            return
-        #
-        for myVar in myVars :
-            myV=getattr(self, myVar)       
-            setattr(self,f'{myVar}Interp', RegularGridInterpolator((self.yy, self.xx), myV, method="linear"))
-            
 
-    def __setKey(self, myKey, defaultValue, **kwargs) :
-        ''' unpack a keyword from **kwargs '''
-        if myKey in kwargs.keys():
-            return kwargs(myKey)
-        return defaultValue
-    
-    #--------------------------------------------------------------------------
-    # interpolate geo image
-    #--------------------------------------------------------------------------
-    def interpGeo(self, x, y, **kwargs) :
-        ''' Call appropriate interpolation method '''
-        if self.useXR :
-            return self.interpXR(x,y,**kwargs)
-        else :
-            return self.interpNP(x,y,**kwargs)
-       
-    def interpXR(self,x,y,**kwargs) :
-        ''' interpolation using xr functions '''
-        useVelocity=self.__setKey('useVelocity', True, **kwargs)
-        useErrors=self.__setKey('useErrors', False, **kwargs)
-        x1,y1,igood=self.toInterp(x,y)
-        x1xr=xr.DataArray(x1)
-        y1xr=xr.DataArray(y1)
+    # ------------------------------------------------------------------------
+    # Interpolation routines - to populate abstract methods from nisarBase2D
+    # ------------------------------------------------------------------------
+    def _setupInterp(self, useVelocity=True, useErrors=False):
+        ''' Setup interpolaters for velocity (vx,vy for useVelocity) and
+        error (ex,ey for useErrors). '''
+        # select variables
+        myVars = self.myVariables(useVelocity, useErrors)
+        self._setupInterpolator(myVars)
+
+    def interp(self, x, y, useVelocity=True, useErrors=False, noSpeed=False):
+        ''' Call appropriate interpolation method to interpolate myVars '''
+        # determine velocity variables to interp
+        myVars = self.myVariables(useVelocity, useErrors, noSpeed=noSpeed)
         #
-        myVars=self.myVariables(useVelocity, useErrors)
-        myResults=[np.full(x1.transpose().shape,np.NaN) for x in myVars]
-        for myVar,i in zip(myVars,range(0,len(myVars))) :
-            tmp=getattr(self,f'{myVar}').interp(x=x1xr,y=y1xr,method='linear')
-            myResults[i][igood]=tmp.values.flatten()
-            myResults[i]=np.reshape(myResults[i],x.shape)
+        for myVar in myVars:
+            if getattr(self, f'{myVar}Interp') is None:
+                self._setupInterp(useVelocity=useVelocity, useErrors=useErrors)
+                break  # One call will setup all myVars
+        return self.interpGeo(x, y, myVars)
+
+    # ------------------------------------------------------------------------
+    # I/O Routines
+    # ------------------------------------------------------------------------
+
+    def dataFileNames(self, fileNameBase, myVars):
+        ''' Compute the file names that need to be read. FileNameBase should
+        be of the form pattern.*.abc or pattern*. The * will be filled with the
+        values in myVars (e.g., pattern.vx.abc.tif, pattern.vy.abc.tif). '''
         #
-        return myResults
-        
-    def toInterp(self,x,y) :
-        # flatten, do bounds check, get locations of good (inbound) points 
-        x1,y1=x.flatten(),y.flatten()
-        xgood=np.logical_and(x1 >= self.xx[0],x1 <= self.xx[-1])
-        ygood=np.logical_and(y1 >= self.yy[0],y1 <= self.yy[-1])
-        igood=np.logical_and(xgood,ygood)
-        return x1[igood],y1[igood],igood
-        
-    def interpNP(self,x,y,**kwargs) :
-        """ interpolate velocity or x at points x and y, which are 
-        in m (note x,y is c-r even though data r-c)"""
-        #
-        useVelocity=self.__setKey('useVelocity', True, **kwargs)
-        useErrors=self.__setKey('useErrors', False, **kwargs)
-        #
-        x1,y1,igood=self.toInterp(x,y)
-        # save good points
-        xy=np.array([y1,x1]).transpose() # noqa 
-        #
-        myVars=self.myVariables(useVelocity, useErrors)
-        myResults=[np.full(x1.transpose().shape,np.NaN) for x in myVars]
-        for myVar,i in zip(myVars,range(0,len(myVars))) :
-            # print(self.vxInterp([0,-150000]))
-            # print(myVar)
-            # print(xy.shape)
-            # print(getattr(self,f'{myVar}Interp'))
-            # print(getattr(self,f'{myVar}Interp')(xy))
-            myResults[i][igood]=getattr(self,f'{myVar}Interp')(xy)
-            myResults[i]=np.reshape(myResults[i],x.shape)
-        #
-        return myResults
-    
-    def imageSize(self) :
-        typeDict={'scalar' : self.x, 'velocity' : self.vx,'error': self.ex}
-        ny,nx=typeDict[self.geoType].shape
-        return nx,ny
-    
-    def computePixEdgeCornersXYM(self) :
-        nx,ny=self.imageSize()
-        x0,y0=self.originInM()
-        dx,dy=self.pixSizeInM()
-        xll,yll=x0 - dx/2,y0 - dx/2
-        xur,yur= xll + nx * dx, yll + ny * dy
-        xul,yul=xll,yur
-        xlr,ylr=xur,yll
-        corners={'ll' : {'x' :xll, 'y' : yll},'lr' : {'x' :xlr, 'y' : ylr}, 'ur' : {'x' :xur, 'y' : yur},'ul' : {'x' :xul, 'y' : yul}}
-        return corners
-    
-    def computePixEdgeCornersLL(self) :
-        corners=self.computePixEdgeCornersXYM()
-        llcorners={}
-        for myKey in corners.keys():
-            lat,lon=self.geo.xymtoll(np.array([corners[myKey]['x']]),np.array([corners[myKey]['y']]))
-            llcorners[myKey]={'lat' : lat[0],'lon' : lon[0]}
-        return llcorners
-        
-    def getWKT_PROJ(self,epsg_code) : 
-       sr=osr.SpatialReference()
-       sr.ImportFromEPSG(epsg_code)
-       wkt=sr.ExportToWkt()
-       return wkt      
-    
-    def writeCloudOptGeo(self,tiffFile,suffix,epsg,gdalType,overviews=None,predictor=1,noDataDefault=None) :
-        ''' write a cloudoptimized geotiff with overviews'''
-        # no data info
-        noDataDict={'.vx' : -2.0e9 , '.vy' : -2.0e9,'.v' : -1.0, '.ex' : -1.0, '.ey' : -1.0,'' : noDataDefault}
-        #
-        # use a temp mem driver for CO geo
-        driver=gdal.GetDriverByName( "MEM")
-        nx,ny=self.imageSize()
-        dx,dy=self.geo.pixSizeInM()
-        dst_ds=driver.Create('',nx,ny,1,gdalType )
-        # set geometry
-        tiffCorners=self.computePixEdgeCornersXYM()
-        dst_ds.SetGeoTransform((tiffCorners['ul']['x'],dx,0,tiffCorners['ul']['y'],0,-dy))
-        #set projection
-        wkt=self.getWKT_PROJ(epsg)
-        dst_ds.SetProjection(wkt)
-        # set nodata
-        noData=noDataDict[suffix]
-        if noData != None :
-            getattr(self,suffix)[np.isnan(getattr(self,suffix))]=noData
-            dst_ds.GetRasterBand(1).SetNoDataValue(noData)
-        # write data 
-        dst_ds.GetRasterBand(1).WriteArray(np.flipud(getattr(self,suffix)))
-        #
-        if overviews != None :
-            dst_ds.BuildOverviews('AVERAGE',overviews)
-        # now copy to a geotiff - mem -> geotiff forces correct order for c opt geotiff
-        dst_ds.FlushCache()
-        driver=gdal.GetDriverByName( "GTiff")
-        dst_ds2=driver.CreateCopy(tiffFile+suffix+'.tif',dst_ds,options=['COPY_SRC_OVERVIEWS=YES','COMPRESS=LZW',f'PREDICTOR={predictor}','TILED=YES'] )
-        dst_ds2.FlushCache()
-        # free memory
-        dst_ds,dst_ds2=None,None
-        
-    def getDomain(self,epsg) :
-        if epsg==None or epsg == 3413 :
-            domain='greenland'
-        elif epsg == 3031 :
-            domain='antarctica'
-        else :
-            myerror('Unexpected epsg code : '+str(epsg))
-        return domain
-    
-    
-    def dataFileNames(self,fileNameBase,useVelocity=True,useErrors=False,noSpeed=True) :
-        ''' compute the file names that need to be read'''
-        suffixes=self.myVariables(useVelocity,useErrors,noSpeed=noSpeed)
-        fileNames=[]
-        if '*' not in fileNameBase :
-            fileNameBase=f'{fileNameBase}.*'
-        for suffix in suffixes :
-            fileNames.append(f'{fileNameBase.replace("*",suffix)}.tif')
+        fileNames = []
+        if '*' not in fileNameBase:  # in this case append myVar as suffix
+            fileNameBase = f'{fileNameBase}.*'
+        # Form names
+        for myVar in myVars:
+            fileNames.append(f'{fileNameBase.replace("*", myVar)}.tif')
         return fileNames
-        
-    def readMyTiff(self,tiffFile,noData=-2.e9) :
-       """ read a tiff file and return the array """
-       if 1 :
-           gdal.AllRegister()
-           ds = gdal.Open(tiffFile)
-           band=ds.GetRasterBand(1)
-           arr=band.ReadAsArray()
-           arr=np.flipud(arr)
-           ds=None
-       else :
-           myerror(f"nisarVel.readMyTiff: error reading tiff file {tiffFile}")
-       arr[np.isnan(arr)]=np.nan
-       arr[arr <=noData]=np.nan
-       return arr
-   
-    def readGeodatFromTiff(self,tiffFile) :
-        """ Read geoinformation from a tiff file and use it to create geodat info - assumes PS coordinates"""
-        try :
-            gdal.AllRegister()
-            ds = gdal.Open(tiffFile)
-            self.sx=ds.RasterXSize
-            self.sy=ds.RasterYSize
-            gt=ds.GetGeoTransform()
-            self.dx=abs(gt[1])
-            self.dy=abs(gt[5])
-            self.x0=(gt[0]+self.dx/2)
-            if gt[5] < 0 :
-                self.y0=(gt[3] - self.sy * self.dy + self.dy/2)
-            else :
-                self.y0=(gt[3] +  self.dy/2)
-        except :
-            myerror("Error trying to readgeodat info from tiff file: "+tiffFile)
 
-    
-    def readProduct(self,fileNameBase,useVelocity=True,useErrors=False,noSpeed=True,useXR=False) :
-        ''' read in a tiff product fileNameBase.*.vx.tif'''
+    def readDataFromTiff(self, fileNameBase, useVelocity=True, useErrors=False,
+                         noSpeed=True, useXR=False):
+        ''' read in a tiff product fileNameBase.*.tif. If
+        useVelocity=True read velocity (e.g, fileNameBase.vx(vy).tif)
+        useErrors=True read errors (e.g, fileNameBase.ex(ey).tif)
+        useSpeed=True read speed (e.g, fileNameBase.vv.tif) otherwise
+        compute from vx,vy.
+
+        Files can be read as np arrays of xarrays (useXR=True, not well tested)
+        '''
         #  get the values that match the type
-        print(noSpeed)
-        self.useXR=useXR
-        minValues={'vx' : -2.e9, 'vy' : -2.e9, 'vv' : -1, 'ex' : -1, 'ey' : -1}
-        fileNames=self.dataFileNames(fileNameBase,useVelocity=useVelocity,useErrors=useErrors,noSpeed=noSpeed)
-        print(fileNames)
-        myTypes=self.myVariables(useVelocity,useErrors,noSpeed=noSpeed)
+        self.useXR = useXR
+        myVars = self.myVariables(useVelocity, useErrors, noSpeed=noSpeed)
+        fileNames = self.dataFileNames(fileNameBase, myVars)
         # loop over arrays and file names to read data
-        for fileName,myType in zip(fileNames,myTypes) :
-            start=datetime.now()
-            if useXR :
-                myArray=xr.open_rasterio(fileName)
-                myArray=myArray.where(myArray > minValues[myType])
-            else :
-                myArray=self.readMyTiff(fileName,noData=minValues[myType])
-            setattr(self,myType,myArray)
-            print(f'read time {datetime.now()-start}')
+        for fileName, myVar in zip(fileNames, myVars):
+            start = datetime.now()
+            if useXR:
+                myArray = xr.open_rasterio(fileName)
+                myArray = myArray.where(myArray > self.noDataDict[myVar])
+            else:
+                myArray = readGeoTiff(fileName, noData=self.noDataDict[myVar])
+            setattr(self, myVar, myArray)
+            if self.verbose:
+                print(f'read time {datetime.now()-start}')
         #
         self.readGeodatFromTiff(fileNames[0])
         # compute mag for velocity and errors
-        if useVelocity :
-            self.vv=np.sqrt(np.square(self.vx) + np.square(self.vy))
-            
-    def displayVel(self,fig=None) :
-        if fig == None :
-            sx,sy=self.sizeInPixels()
-            fig=plt.figure(constrained_layout=True,figsize=(10.*sx/sy,10.))
-        #   
-        absmax=7000
-        mxcapped=min(np.percentile(self.vv[np.isfinite(self.vv)],99),absmax)
-        b= self.boundsInKm()
-        axImage=fig.add_subplot(111)
-        axImage.imshow(self.vv,origin='lower',vmin=0,vmax=mxcapped,extent=(b[0],b[2],b[1],b[3]))
-        return axImage
-    
-    def sizeInPixels(self):
-        return self.sx,self.sy
-    
-    def _toKm(func) :
-        @functools.wraps(func)
-        def convertKM(*args) :
-            return [x*0.001 for x in func(*args)]
-        return convertKM
-    
-    
-    def sizeInM(self):
-        return self.sx*self.dx,self.sy*self.dy
-    
-    @_toKm
-    def sizeInKm(self):
-        return self.sizeInM()
-    
-    def originInM(self):
-        return self.x0,self.y0   
-    @_toKm
-    def originInKm(self):
-        return self.originInM()
-    
-    def boundsInM(self):
-        return self.x0,self.y0,(self.x0+(self.sx-1)*self.dx),(self.y0+(self.sy-1)*self.dy)
-    @_toKm
-    def boundsInKm(self):
-        return self.boundsInM()
+        if useVelocity:
+            self.vv = np.sqrt(np.square(self.vx) + np.square(self.vy))
+        self.fileNameBase = fileNameBase  # save filenameBase
 
-    def pixSizeInM(self):
-        return self.dx,self.dy
-    @_toKm
-    def pixSizeInKm(self):
-        return self.pixSizeInM()
+    def writeDataToTiff(self, fileNameBase, overviews=None, predictor=1,
+                        noDataDefault=None, useVelocity=True, useErrors=False,
+                        noSpeed=True):
+        ''' Write a velocity product with useVelocity/useErrors/noSpeed to
+        determine which bands are written.'''
+        # Get var names and create files names from template
+        myVars = self.myVariables(useVelocity, useErrors, noSpeed=noSpeed)
+        fileNames = self.dataFileNames(fileNameBase, myVars)
+        # loop and write each band in myVars
+        for fileName, myVar in zip(fileNames, myVars):
+            self.writeCloudOptGeo(fileName, myVar, gdalType=self.gdalType,
+                                  overviews=None, predictor=1,
+                                  noData=self.noDataDict[myVar])
+    # ------------------------------------------------------------------------
+    # Dates routines.
+    # ------------------------------------------------------------------------
+
+    def parseVelDatesFromMeta(self, metaFile=None):
+        ''' Parse dates'''
+        if metaFile is None:
+            metaFile = self.fileName + '.meta'
+        #
+        return parseDatesFromMeta(metaFile)
+
+    def parseVelDatesFromDirName(self, dirName=None, divider='.',
+                                 dateTemplate='Vel-%Y-%m-%d.%Y-%m-%d'):
+        ''' Parse the dates from the directory name the velocity products are
+        stored in.'''
+        if dirName is None:
+            # Special case to temove release subdir if it exists.
+            prodDir = self.fileNameBase.replace('/release', '')
+            dirName = os.path.dirname(prodDir).split('/')[-1]
+        return parseDatesFromDirName(dirName, dateTemplate, divider)
+
+    # ------------------------------------------------------------------------
+    # Ploting routines.
+    # ------------------------------------------------------------------------
+    def maxPlotV(self, maxv=7000):
+        ''' Uses 99 percentile range for maximum value, with maxv as an upper
+        limit. Default in most cases will be much greater than actual max from
+        the percentiles. '''
+        maxVel = min(np.percentile(self.vv[np.isfinite(self.vv)], 99), maxv)
+        return math.ceil(maxVel/100.)*100.  # round up to nearest 100
+
+    def displayVel(self, fig=None, maxv=7000):
+        ''' Use matplotlib to show velocity in a single subplot with a color
+        bar. Clip to absolute max set by maxv, though in practives percentile
+        will clip at a signficantly lower value. '''
+        if fig is None:
+            sx, sy = self.sizeInPixels()
+            figV = plt.figure(constrained_layout=True,
+                              figsize=(10.*sx/sy, 10.))
+        #
+        b = self.boundsInKm()  # bounds for plot window
+        axImage = figV.add_subplot(111)
+        divider = make_axes_locatable(axImage)  # Create space for colorbar
+        cbAx = divider.append_axes('right', size='5%', pad=0.05)
+        pos = axImage.imshow(self.vv, origin='lower', vmin=0,
+                             vmax=self.maxPlotV(maxv=maxv),
+                             extent=(b[0], b[2], b[1], b[3]))
+        cb = figV.colorbar(pos, cax=cbAx, orientation='vertical', extend='max')
+        cb.set_label('Speed (m/yr)', size=self.labelFontSize)
+        cb.ax.tick_params(labelsize=self.plotFontSize)
+        axImage.set_xlabel('X (km)', size=self.labelFontSize)
+        axImage.set_ylabel('Y (km)', size=self.labelFontSize)
+        axImage.tick_params(axis='x', labelsize=self.plotFontSize)
+        axImage.tick_params(axis='y', labelsize=self.plotFontSize)
+        return figV, axImage
