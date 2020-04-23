@@ -120,6 +120,7 @@ class nisarVel(nisarBase2D):
             else:
                 myArray = readGeoTiff(fileName, noData=self.noDataDict[myVar])
             setattr(self, myVar, myArray)
+            setattr(self, f'{myVar}Interp', None)  # flush any prior interp f
             if self.verbose:
                 print(f'read time {datetime.now()-start}')
         #

@@ -177,7 +177,7 @@ class nisarBase2D():
             return self._interpNP(x, y, myVars, **kwargs)
 
     def _toInterp(self, x, y):
-        ''' Return xy values of coorindates that within the image bounds for 
+        ''' Return xy values of coorindates that within the image bounds for
         interpolation. '''
         # flatten, do bounds check, get locations of good (inbound) points.
         x1, y1 = x.flatten(), y.flatten()
@@ -209,7 +209,7 @@ class nisarBase2D():
         # Save good points
         xy = np.array([y1, x1]).transpose()  # noqa
         #
-        myResults = [np.full(x1.transpose().shape, np.NaN) for x in myVars]
+        myResults = [np.full(x.transpose().shape, np.NaN) for v in myVars]
         for myVar, i in zip(myVars, range(0, len(myVars))):
             myResults[i][igood] = getattr(self, f'{myVar}Interp')(xy)
             myResults[i] = np.reshape(myResults[i], x.shape)

@@ -47,7 +47,7 @@ def parseDatesFromDirName(dirName, dateTemplate, divider):
         divider is a character to split the date (e.g, ".")'''
     dates = []
     for dN, dT in zip(dirName.split(divider), dateTemplate.split(divider)):
-        print(dN,dT)
+        print(dN, dT)
         if '%' in dT:
             print(datetime.strptime(dN, dT))
             dates.append(datetime.strptime(dN, dT))

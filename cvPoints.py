@@ -250,7 +250,7 @@ class cvPoints:
             x, y = func(*args)
             #
             if vel is not None:
-                vx, vy, vr = vel.interp(x, y, ['vx', 'vy', 'vz'])
+                vx, vy, vr = vel.interp(x, y, ['vx', 'vy'])
                 iGood = np.isfinite(vx)
                 x, y = x[iGood], y[iGood]
             if ax is None:
