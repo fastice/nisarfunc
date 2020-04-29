@@ -41,7 +41,7 @@ class cvPoints:
         #
         self.setCVFile(cvFile)
         self.epsg = epsg  # Epsg set 3413 or 3031 depending on if N or S
-        self.llproj = pyproj.Proj("+init=EPSG:4326")  # Used for conversions
+        self.llproj = pyproj.Proj("EPSG:4326")  # Used for conversions
         self.xyproj = None  # Defined once epsg set.
         if cvFile is not None:
             self.readCVs(cvFile=cvFile)
@@ -62,7 +62,7 @@ class cvPoints:
         if len(self.lat) <= 0:
             myError("Cannot set epsg without valid latlon")
         self.epsg = [3031, 3413][self.lat[0] > 0]
-        self.xyproj = pyproj.Proj(f"+init=EPSG:{self.epsg}")
+        self.xyproj = pyproj.Proj(f"EPSG:{self.epsg}")
     #
     # ===================== Cv input/output stuff ============================
     #
@@ -202,7 +202,7 @@ class cvPoints:
     def lltoxym(self, lat, lon):
         ''' Convert ll to xy. '''
         if self.xyproj is not None:
-            x, y = pyproj.transform(self.llproj, self.xyproj, lon, lat)
+            x, y = pyproj.transform(self.llproj, self.xyproj, lat, lon)
             return x, y
         else:
             myError("lltoxy: proj not defined")
