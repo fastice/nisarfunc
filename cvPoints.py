@@ -27,7 +27,19 @@ class cvPoints:
     legendFontSize = 15  # Font size for legends
 
     def __init__(self, cvFile=None, epsg=None):
-        """ \n\nRead a cvfile and manipulate cv points """
+        '''
+        Initialize an object to read a cvfile (cal/val points file) and
+        manipulate cv points.
+        Parameters
+        ----------
+        cvFile : TYPE, optional
+            DESCRIPTION. The default is None.
+        epsg : TYPE, optional
+            DESCRIPTION. The default is None.
+        Returns
+        -------
+        None.
+        '''
         #
         # set everything to zero as default
         self.cvFile = None  # File with cal/val points
@@ -47,18 +59,41 @@ class cvPoints:
             self.readCVs(cvFile=cvFile)
 
     def setCVFile(self, cvFile):
-        ''' Set the name of the CVlfile '''
+        '''
+        Set the name of the CVlfile for the object.
+        Parameters
+        ----------
+        cvFile : str
+            Name of cv file with cal/val points.
+        Returns
+        -------
+        None.
+        '''
         self.cvFile = cvFile
 
     def checkCVFile(self):
-        ''' Check cvfile exists. '''
+        '''
+        Check cvfile exists.
+        Parameters
+        ----------
+        cvFile : str
+            Name of cv file with cal/val points.
+        Returns
+        -------
+        None.
+        '''
         if self.cvFile is None:
             myError("No cvfile specified")
         if not os.path.exists(self.cvFile):
             myError("cvFile: {0:s} does not exist".format(self.cvFile))
 
     def setEPSG(self):
-        ''' Set epsg based on northern or southern lat. '''
+        '''
+        Set epsg based on northern or southern lat of the cv points.
+        Returns
+        -------
+        None.
+        '''
         if len(self.lat) <= 0:
             myError("Cannot set epsg without valid latlon")
         self.epsg = [3031, 3413][self.lat[0] > 0]
@@ -68,7 +103,16 @@ class cvPoints:
     #
 
     def readCVs(self, cvFile=None):
-        ''' read cvs, set projection based on hemisphere, convert to x,y (m)'''
+        '''
+        Read cv points, set projection based on hemisphere, convert to x,y (m)
+        Parameters
+        ----------
+        cvFile : str, optional
+            Name of cvFile in not already set. The default is None.
+        Returns
+        -------
+        None.
+        '''
         self.setCVFile(cvFile)
         self.checkCVFile()
         #
@@ -94,8 +138,18 @@ class cvPoints:
         self.x, self.y = self.lltoxym(self.lat, self.lon)  # to xy coords
 
     def writeCVs(self, cvFileOut):
-        ''' Write a CV file as a list of points lat,lon,z,vx,vy,vz with a
-        dict header. Need to update to add header. '''
+        '''
+        Write a CV file as a list of points lat,lon,z,vx,vy,vz with a
+        dict header. Need to update to add header.
+        Parameters
+        ----------
+        cvFileOut : str
+            Name of cvFile in not already set. The default is None.
+        Returns
+        -------
+        None.
+
+        '''
         fpOut = open(cvFileOut, 'w')
         # in case type file that needs this.
         for line in self.header:
@@ -116,27 +170,63 @@ class cvPoints:
     #
 
     def zeroCVs(self):
-        '''Return zero cvpoints locations.'''
+        '''
+        Return bool array of effectively stationary points.
+        Returns
+        -------
+        bool
+            List of all zero points (speed < 0.00001) indicated by T & F val.
+        '''
         return np.abs(self.vh) < 0.00001
 
     def vRangeCVs(self, minv, maxv):
-        ''' CVs in range (minv,maxv). '''
+        '''
+        Return bool array of points in a specified velocity range (minv,maxv).
+        Returns
+        -------
+        bool
+            List of points in range (vmin,vmax) indicated by T & F val.
+        '''
         return np.logical_and(self.vh >= minv, self.vh < maxv)
 
     def allCVs(self):
-        ''' Return allCvpoint locations.'''
+        '''
+        Return bool array of valid points.
+        Returns
+        -------
+        bool
+            List of all valid points (speed >=0) indicated by T & F val.
+        '''
         return np.abs(self.vh) >= 0
 
     def NzeroCVs(self):
-        ''' return number of zero cvpoints'''
+        '''
+        Compute number of number of zero cvpoints
+        Returns
+        -------
+        int
+            Number of zero points.
+        '''
         return sum(self.zeroCVs())
 
     def NVRangeCVs(self, minv, maxv):
-        ''' number of cv points in range (minv,maxv) '''
+        '''
+        Compute number of cv points in range (minv,maxv)
+        Returns
+        -------
+        int
+            Number of points in range.
+        '''
         return sum(self.vRangeCVs(minv, maxv))
 
     def NallCVs(self):
-        ''' Return number of cvpoints. '''
+        '''
+        Compute number of cv points
+        Returns
+        -------
+        int
+            Number of cv points.
+        '''
         return sum(self.allCVs())
     #
     # ===================== Interpolate Velocity Stuff ====================
@@ -200,7 +290,21 @@ class cvPoints:
     #
 
     def lltoxym(self, lat, lon):
-        ''' Convert ll to xy. '''
+        '''
+        Convert lat lon (deg) to x y (m)
+        Parameters
+        ----------
+        lat : nparray
+            Latitude nparray.
+        lon : nparray
+            Longitude nparray.
+        Returns
+        -------
+        x : nparray
+            x coordinate in m.
+        y : nparray
+            y coordinate in m..
+        '''
         if self.xyproj is not None:
             x, y = pyproj.transform(self.llproj, self.xyproj, lat, lon)
             return x, y
@@ -208,35 +312,77 @@ class cvPoints:
             myError("lltoxy: proj not defined")
 
     def llzero(self):
-        ''' Return lat and lon of zero CVs. '''
+        '''
+        Return lat and lon of zero CVs.
+        Returns
+        -------
+        lat, lon : nparray
+            lat and lon of zero CVs.
+        '''
         iZero = self.zeroCVs()
         return self.lat(iZero), self.lat(iZero)
 
     def xyzerom(self):
-        ''' XY coordinates in m for zero points.'''
+        '''
+        Return x and y (m) coordinates of zero CVs.
+        Returns
+        -------
+        x,y  : nparray
+           x and y in m of zero CVs.
+        '''
         iZero = self.zeroCVs()
         return self.x[iZero], self.y[iZero]
 
     def xyzerokm(self):
-        ''' XY coordinates in km for zero points.'''
+        '''
+        Return x and y (km) coordinates of zero CVs.
+        Returns
+        -------
+        x,y  : nparray
+           x and y in km of zero CVs.
+        '''
         x, y = self.xyzerom()
         return x/1000., y/1000.
 
     def xyallm(self):
-        ''' xy coordinates in m for all points'''
+        '''
+        Return x and y (m) coordinates of all CVs.
+        Returns
+        -------
+        x,y  : nparray
+           x and y in m of all CVs.
+        '''
         return self.x, self.y
 
     def xyallkm(self):
-        ''' xy coordinates in km for all points'''
+        '''
+        Return x and y (km) coordinates of all CVs.
+        Returns
+        -------
+        x,y  : nparray
+           x and y in km of all CVs.
+        '''
         return self.x/1000., self.y/1000.
 
     def xyVRangem(self, minv, maxv):
-        ''' xy coordinates in m for points with speed in range (minv,maxv)'''
+        '''
+        Return x and y (m) coordinates for pts with speed in range (minv,maxv).
+        Returns
+        -------
+        x,y  : nparray
+           x and y in m of all CVs.
+        '''
         iRange = self.vRangeCVs(minv, maxv)
         return self.x[iRange], self.y[iRange]
 
     def xyVRangekm(self, minv, maxv):
-        ''' xy coordinates in km for points with speed in range (minv,maxv)'''
+        '''
+        Return x and y (km) coords for pts with speed in range (minv,maxv).
+        Returns
+        -------
+        x,y  : nparray
+           x and y in km of all CVs.
+        '''
         x, y = self.xyvRangem(minv, maxv)
         return x/1000., y/1000.
     #
@@ -261,13 +407,38 @@ class cvPoints:
 
     @_plotCVLocs
     def plotVRangeCVLocs(self, minv, maxv):
-        ''' plot x,y locations for points where maxv > v > min '''
+        '''
+        plot x,y locations for points where maxv > v > min.
+        Parameters
+        ----------
+        minv : float
+            minimum speed of desired range.
+        maxv : float
+            maximum speed of desired range.
+        Returns
+        -------
+        None
+            DESCRIPTION.
+        '''
         return self.xyVRangem(minv, maxv)
 
     @_plotCVLocs
     def plotOutlierLocs(self, minv, maxv, vel, nSig=3):
         ''' Plot outliers where difference in either velocity component is >
-        nSig*sigma '''
+        nSig*sigma for points in range (minv,maxv)
+        Parameters
+        ----------
+        minv : float
+            minimum speed of desired range.
+        maxv : float
+            maximum speed of desired range.
+        vel : nisarVel
+            A nisarVel object
+        Returns
+        -------
+        None
+            DESCRIPTION.
+        '''
         x, y = self.xyVRangem(minv, maxv)  # get points in range
         iPts = self.vRangeCVs(minv, maxv)  # Just points in range (minv,vmaxv)
         dvx, dvy, iGood = self.cvDifferences(x, y, iPts, vel)  # get diffs
@@ -283,15 +454,39 @@ class cvPoints:
     #
 
     def showDiffs(self, vel, minv, maxv):
-        ''' Plot differences and histograms of differences '''
+        '''
+        Plot differences and histograms of differences
+        Parameters
+        ----------
+        vel : nisarVel
+            A nisarVel object
+        minv : float
+            minimum speed of desired range.
+        maxv : float
+            maximum speed of desired range.
+        Returns
+        -------
+        None
+            DESCRIPTION.
+        '''
         figD = plt.figure(figsize=(14, 5))
         self.plotVRangeCVDiffs(vel, figD, minv, maxv)
         self.plotVRangeHistDiffs(vel, figD, minv, maxv)
         plt.tight_layout()
 
     def _plotDiffs(func):
-        ''' Decorator for plotting differences between tie points and
-        velocities interpolated from in vel map '''
+        '''
+        Decorator for plotting differences between tie points and
+        velocities interpolated from in vel map
+        Parameters
+        ----------
+        func : function
+            Function being decorated.
+        Returns
+        -------
+        axImage
+            Axis for the plot.
+        '''
         @functools.wraps(func)
         def plotp(*args, **kwargs):
             x, y, iPts = func(*args)
@@ -310,8 +505,18 @@ class cvPoints:
         return plotp
 
     def _histDiffs(func):
-        ''' Decorator for plotting differences between tie points and
-        velocities interpolated from in vel map '''
+        '''
+        Decorator for plotting differences between tie points and
+        velocities interpolated from in vel map
+        Parameters
+        ----------
+        func : function
+            Function being decorated.
+        Returns
+        -------
+        axHistX, axHistY
+            Axes for the hist plots.
+        '''
         # the actual stats
         def clipTail(dx):
             ''' Clip differences to +/- 3 sigma '''
@@ -319,7 +524,7 @@ class cvPoints:
             dx[dx < -threeSigma] = -threeSigma
             dx[dx > threeSigma] = threeSigma
             return dx
-
+        #
         @functools.wraps(func)
         def ploth(*args, **kwargs):
             x, y, iPts = func(*args)
@@ -341,27 +546,87 @@ class cvPoints:
 
     @_plotDiffs
     def plotVRangeCVDiffs(self, vel, figD, minv, maxv):
-        ''' Plot differences between c/v points and interpolated values from
+        '''
+        Plot differences between c/v points and interpolated values from
         v in range (minv,maxv).
         Originall written with decorator to accomodate multiple cases,
-        but collapsed it down to one. Kept decorator for future mods. '''
+        but collapsed it down to one. Kept decorator for future mods.
+        Parameters
+        ----------
+        vel : nisarVel
+            Velocity map for comparison.
+        figD : matplot lib fig
+            Figure.
+        minv : float
+            minimum speed of desired range.
+        maxv : float
+            maximum speed of desired range.
+        Returns
+        -------
+        x : nparray
+            x coordinates.
+        y : nparray
+            y coordinates.
+        iPts : bool array
+            points.
+        '''
         x, y = self.xyVRangem(minv, maxv)
         iPts = self.vRangeCVs(minv, maxv)
         return x, y, iPts
 
     @_histDiffs
     def plotVRangeHistDiffs(self, vel, figD, minv, maxv):
-        ''' Plot differences between c/v points and interpolated values from
+        '''
+        Plot differences between c/v points and interpolated values from
         v in range (minv,maxv).
         Originall written with decorator to accomodate multiple cases,
-        but collapsed it down to one. Kept decorator for future mods. '''
+        but collapsed it down to one. Kept decorator for future mods.
+        Parameters
+        ----------
+        vel : nisarVel
+            Velocity map for comparison.
+        figD : matplot lib fig
+            Figure.
+        minv : float
+            minimum speed of desired range.
+        maxv : float
+            maximum speed of desired range.
+        Returns
+        -------
+        x : nparray
+            x coordinates.
+        y : nparray
+            y coordinates.
+        iPts : bool array
+            points.
+        '''
         x, y = self.xyVRangem(minv, maxv)
         iPts = self.vRangeCVs(minv, maxv)
         return x, y, iPts
 
     def cvDifferences(self, x, y, iPts, vel):
-        ''' Interpolate the velocity components from velocity map at the c/v
-        point locations and return the differences (vx_map - vx_cv).'''
+        '''
+        Interpolate the velocity components from velocity map at the c/v
+        point locations and return the differences (vx_map - vx_cv).
+        Parameters
+        ----------
+        x : nparray
+            x coordinates.
+        y : nparray
+            y coordinates.
+        iPts : bool array
+            points to compare.
+        vel : nisarVel
+            Velocity map for comparison.
+        Returns
+        -------
+        dvx nparray
+            vx difference for good points.
+        dvy nparray
+            vy difference for good points.
+        iGood : bool nparray
+            Good points.
+        '''
         vx, vy, vr = vel.interp(x, y, ['vx', 'vy', 'vz'])
         # subtract cvpoint values args[0] is self
         dvx, dvy = vx - self.vx[iPts], vy - self.vy[iPts]
@@ -374,9 +639,19 @@ class cvPoints:
     #
 
     def readCullFile(self, cullFile):
-        ''' Read a cull file. For an original cvFile, a culling process was
-        applied and the results saved in the cullFile. The file contains a
-        header dictionary. Subsequent lines are indices to cull.'''
+        '''
+        Read a cull file. For an original cvFile, a culling process was
+        applied and the results saved in the cullFile.
+        Parameters
+        ----------
+        cullFile : str
+            File name for cull file.The file contains a
+            header dictionary. Subsequent lines are indices to cull.
+        Returns
+        -------
+        cullPoints: nparray
+            Indices of culled points.
+        '''
         fp = open(cullFile, 'r')
         myParams = eval(fp.readline())
         print(myParams["cvFile"])
@@ -392,8 +667,18 @@ class cvPoints:
         return np.array(cullPoints)
 
     def applyCullFile(self, cullFile):
-        ''' Read a cv point cull file and update nocull so that these points
-        can be filtered out if needed. '''
+        '''
+        Read a cv point cull file and update nocull so that these points
+        can be filtered out if needed.
+        Parameters
+        ----------
+        cullFile : str
+            File name for cull file.The file contains a
+            header dictionary. Subsequent lines are indices to cull.
+        Returns
+        -------
+        None
+        '''
         #
         self.header.append(cullFile)
         toCull = self.readCullFile(cullFile)

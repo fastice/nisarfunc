@@ -23,7 +23,7 @@ class nisarVel(nisarBase2D):
     ''' This class creates objects to contain nisar velocity and/or error maps.
     The data can be pass in on init, or read from a geotiff.
 
-    Which variables that are used are specified with useVelocity, useErrrors,
+    The variables that are used are specified with useVelocity, useErrrors,
     and, noSpeedand (see nisarVel.readDatafromTiff).
 
     The variables used are returned as a list (e.g., ["vx","vy"])) by
@@ -36,7 +36,46 @@ class nisarVel(nisarBase2D):
     def __init__(self, vx=None, vy=None, v=None, ex=None, ey=None, e=None,
                  sx=None, sy=None, x0=None, y0=None, dx=None, dy=None,
                  epsg=None, useXR=False, verbose=True):
-        ''' initialize a nisar velocity object'''
+        '''
+        Instantiate nisarVel object. Possible bands are 'vx', 'vy','v', 'ex',
+        'ey', 'e'
+
+        Parameters
+        ----------
+        vx : 2d array, optional
+            Initialize vx values. The default is None.
+        vy : 2d array, optional
+            Initialize vy values. The default is None.
+        v : 2d array, optional
+            Initialize v values. The default is None.
+        ex : 2d array, optional
+            Initialize ex values. The default is None.
+        ey : 2d array, optional
+            Initialize ey values. The default is None.
+        e : 2d array, optional
+            Initialize e values. The default is None.
+        sx : int, optional
+            Set x size in pixels. The default is None.
+        sy : int, optional
+            Set y size in pixels. The default is None.
+        x0 : float, optional
+            x coordinate of origin (ll) in m. The default is None.
+        y0 : float, optional
+            y coordinate of origin (ll) in m. The default is None.
+        dx : float, optional
+            pixel size for x coordinate in m. The default is None.
+        dy : float, optional
+            pixel size for y coordinate in m. The default is None.
+        epsg : int, optional
+            epsg code. The default is None.
+        useXR : bool, optional
+            Use xarray rather than nparray (not tested). The default is False.
+        verbose : bool, optional
+            Increase level of informational messages. The default is True.
+        Returns
+        -------
+        None.
+        '''
         nisarBase2D.__init__(self, sx=sx, sy=sy, x0=x0, y0=y0, dx=dx, dy=dy,
                              epsg=epsg, useXR=useXR)
         self.vx, self.vy, self.vv, self.ex, self.ey = vx, vy, v, ex, ey
@@ -48,8 +87,22 @@ class nisarVel(nisarBase2D):
         self.gdalType = gdal.GDT_Float32  # data type for velocity products
 
     def myVariables(self, useVelocity, useErrors, noSpeed=False):
-        ''' Based on the flags, this routine determines which velocity/error
-        fields that an instance will contain. '''
+        '''
+        Based on the input flags, this routine determines which velocity/error
+        fields that an instance will contain.
+        Parameters
+        ----------
+        useVelocity : bool
+            Include 'vx', 'vy', and 'vv'.
+        useErrors : bool
+            Include 'ex', and 'ey'.
+        noSpeed : bool, optional
+            If false, don't include vv. The default is False.
+        Returns
+        -------
+        myVars : list of str
+            list of variable names as strings, e.g. ['vx',...].
+        '''
         myVars = []
         if useVelocity:
             myVars += ['vx', 'vy']
@@ -63,17 +116,48 @@ class nisarVel(nisarBase2D):
     # Interpolation routines - to populate abstract methods from nisarBase2D
     # ------------------------------------------------------------------------
     def _setupInterp(self, useVelocity=True, useErrors=False):
-        ''' Setup interpolaters for velocity (vx,vy for useVelocity) and
-        error (ex,ey for useErrors). '''
+        '''
+        Setup interpolaters for velocity (vx,vy for useVelocity) and
+        error (ex,ey for useErrors).
+        Parameters
+        ----------
+        useVelocity : bool, optional
+            Setup velocity interpolation if True. The default is True.
+        useErrors : TYPE, optional
+            Setup error interpolation if True. The default is False.
+        Returns
+        -------
+        None.
+        '''
         # select variables
         myVars = self.myVariables(useVelocity, useErrors)
         self._setupInterpolator(myVars)
 
     def interp(self, x, y, useVelocity=True, useErrors=False, noSpeed=False):
-        ''' Call appropriate interpolation method to interpolate myVars '''
+        '''
+        Call appropriate interpolation method to interpolate myVars at x, y
+        points.
+
+        Parameters
+        ----------
+        x : nparray
+            DESCRIPTION.
+        y : nparray
+            DESCRIPTION.
+        useVelocity : bool, optional
+            Interpolate velocity if True. The default is True.
+        useErrors : bool, optional
+            Interpolate errors if True. The default is False.
+        noSpeed : bool, optional
+            Skip interpolate of speed if True. The default is False.
+        Returns
+        -------
+        npArray
+            interpolate results for [nbands, npts].
+        '''
         # determine velocity variables to interp
         myVars = self.myVariables(useVelocity, useErrors, noSpeed=noSpeed)
-        #
+        # Set up interpolator if not already done
         for myVar in myVars:
             if getattr(self, f'{myVar}Interp') is None:
                 self._setupInterp(useVelocity=useVelocity, useErrors=useErrors)
@@ -85,9 +169,22 @@ class nisarVel(nisarBase2D):
     # ------------------------------------------------------------------------
 
     def dataFileNames(self, fileNameBase, myVars):
-        ''' Compute the file names that need to be read. FileNameBase should
-        be of the form pattern.*.abc or pattern*. The * will be filled with the
-        values in myVars (e.g., pattern.vx.abc.tif, pattern.vy.abc.tif). '''
+        '''
+        Compute the file names that need to be read. Appends tif.
+        Parameters
+        ----------
+        fileNameBase : str
+            FileNameBase should be of the form
+            pattern.*.abc or pattern*.
+            The wildcard (*) will be filled with the values in myVars
+            e.g.,pattern.vx.abc.tif, pattern.vy.abc.tif.
+        myVars : list of str
+            list of variable names as strings, e.g. ['vx',...].
+        Returns
+        -------
+        fileNames : ['str'...]
+            List of filenames.
+        '''
         #
         fileNames = []
         if '*' not in fileNameBase:  # in this case append myVar as suffix
@@ -99,13 +196,33 @@ class nisarVel(nisarBase2D):
 
     def readDataFromTiff(self, fileNameBase, useVelocity=True, useErrors=False,
                          noSpeed=True, useXR=False):
-        ''' read in a tiff product fileNameBase.*.tif. If
+        '''
+        read in a tiff product fileNameBase.*.tif. If
         useVelocity=True read velocity (e.g, fileNameBase.vx(vy).tif)
         useErrors=True read errors (e.g, fileNameBase.ex(ey).tif)
         useSpeed=True read speed (e.g, fileNameBase.vv.tif) otherwise
         compute from vx,vy.
 
         Files can be read as np arrays of xarrays (useXR=True, not well tested)
+
+        Parameters
+        ----------
+        fileNameBase : str
+            FileNameBase should be of the form
+            pattern.*.abc or pattern*.
+            The wildcard (*) will be filled with the values in myVars
+            e.g.,pattern.vx.abc.tif, pattern.vy.abc.tif.
+        useVelocity : bool, optional
+            Interpolate velocity if True. The default is True.
+        useErrors : bool, optional
+            Interpolate errors if True. The default is False.
+        noSpeed : bool, optional
+            Skip interpolate of speed if True. The default is False.
+        useXR : bool, optional
+            read data as xarrays. The default is False.
+        Returns
+        -------
+        None.
         '''
         #  get the values that match the type
         self.useXR = useXR
@@ -130,11 +247,35 @@ class nisarVel(nisarBase2D):
             self.vv = np.sqrt(np.square(self.vx) + np.square(self.vy))
         self.fileNameBase = fileNameBase  # save filenameBase
 
-    def writeDataToTiff(self, fileNameBase, overviews=None, predictor=1,
-                        noDataDefault=None, useVelocity=True, useErrors=False,
-                        noSpeed=True):
-        ''' Write a velocity product with useVelocity/useErrors/noSpeed to
-        determine which bands are written.'''
+    def writeDataToTiff(self, fileNameBase, useVelocity=True, useErrors=False,
+                        noSpeed=True, overviews=None, predictor=1,
+                        noDataDefault=None):
+        '''
+        Write a velocity product with useVelocity/useErrors/noSpeed to
+        determine which bands are written.
+        Parameters
+        ----------
+        fileNameBase : str
+            FileNameBase should be of the form
+            pattern.*.abc or pattern*.
+            The wildcard (*) will be filled with the values in myVars
+            e.g.,pattern.vx.abc.tif, pattern.vy.abc.tif.
+        useVelocity : bool, optional
+            Use the velocity variables. The default is True.
+        useErrors : bool, optional
+            Use the error variables. The default is False.
+        noSpeed : bool, optional
+            Don't use speed. The default is True.
+        overviews : list, optional
+            List of overvew sizes (e.g., [2, 4, 8, 16]). The default is None.
+        predictor : int, the default is 1
+            Predictor used by gdal for compression. The default is 1.
+        noDataDefault : optional - same as data, optional
+            No data value. The default is None.
+        Returns
+        -------
+        None.
+        '''
         # Get var names and create files names from template
         myVars = self.myVariables(useVelocity, useErrors, noSpeed=noSpeed)
         fileNames = self.dataFileNames(fileNameBase, myVars)
@@ -148,7 +289,17 @@ class nisarVel(nisarBase2D):
     # ------------------------------------------------------------------------
 
     def parseVelDatesFromMeta(self, metaFile=None):
-        ''' Parse dates'''
+        '''
+        Parse dates from a GIMP meta file.
+        Parameters
+        ----------
+        metaFile : str, optional
+            metaFile name, if not specified use basename. The default is None.
+        Returns
+        -------
+        dates : [datetime, datetime]
+            First and last dates from meta file.
+        '''
         if metaFile is None:
             metaFile = self.fileName + '.meta'
         #
@@ -156,8 +307,22 @@ class nisarVel(nisarBase2D):
 
     def parseVelDatesFromDirName(self, dirName=None, divider='.',
                                  dateTemplate='Vel-%Y-%m-%d.%Y-%m-%d'):
-        ''' Parse the dates from the directory name the velocity products are
-        stored in.'''
+        '''
+        Parse the dates from the directory name the velocity products are
+        stored in.
+        Parameters
+        ----------
+        dirName : str, optional
+            Name of the directory. The default is None.
+        divider : str, optional
+            character that divides up name xyz.date1.date2. The default is '.'.
+        dateTemplate : str, optional
+            Template for dir name. The default is 'Vel-%Y-%m-%d.%Y-%m-%d'.
+        Returns
+        -------
+        dates : [datetime, datetime]
+            First and last dates from meta file.
+        '''
         if dirName is None:
             # Special case to temove release subdir if it exists.
             prodDir = self.fileNameBase.replace('/release', '')
@@ -168,16 +333,40 @@ class nisarVel(nisarBase2D):
     # Ploting routines.
     # ------------------------------------------------------------------------
     def maxPlotV(self, maxv=7000):
-        ''' Uses 99 percentile range for maximum value, with maxv as an upper
+        '''
+        Uses 99 percentile range for maximum value, with maxv as an upper
         limit. Default in most cases will be much greater than actual max from
-        the percentiles. '''
+        the percentiles.
+        Parameters
+        ----------
+        maxv : float or int, optional
+            max velocity. The default is 7000.
+        Returns
+        -------
+        float
+            Upper limit on velocity for plotting.
+        '''
         maxVel = min(np.percentile(self.vv[np.isfinite(self.vv)], 99), maxv)
         return math.ceil(maxVel/100.)*100.  # round up to nearest 100
 
     def displayVel(self, fig=None, maxv=7000):
-        ''' Use matplotlib to show velocity in a single subplot with a color
+        '''
+        Use matplotlib to show velocity in a single subplot with a color
         bar. Clip to absolute max set by maxv, though in practives percentile
-        will clip at a signficantly lower value. '''
+        will clip at a signficantly lower value.
+        Parameters
+        ----------
+        fig : matplot lib fig, optional
+            Pass in an existing figure. The default is None.
+        maxv : float or int, optional
+            max velocity. The default is 7000.
+        Returns
+        -------
+        figV : matplot lib fig
+            Figure used for plot.
+        axImage : matplot lib ax
+            Axis used for plot.
+        '''
         if fig is None:
             sx, sy = self.sizeInPixels()
             figV = plt.figure(constrained_layout=True,

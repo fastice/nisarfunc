@@ -66,7 +66,13 @@ class nisarBase2D():
     # ------------------------------------------------------------------------
 
     def xyCoordinates(self):
-        ''' Compute xy coordinates for image(y,x). '''
+        '''
+        Compute xy coordinates for image(y,x).
+        Save as 1-D arrays: self.xx, self.yy.
+        Returns
+        -------
+        None.
+        '''
         # check specs exist
         if None in (self.x0, self.y0, self.sx, self.sy, self.dx, self.dy):
             myError(f'nisarVel.xyCoordinates: x0,y0,sx,sy,dx,dy undefined '
@@ -77,7 +83,13 @@ class nisarBase2D():
         self.yy = np.arange(self.y0, self.y0 + int(self.sy) * self.dy, self.dy)
 
     def xyGrid(self):
-        ''' Computer grid version of coordinates '''
+        '''
+        Computer grid version of coordinates.
+        Save as 2-D arrays: self.xGrid, self.yGrid
+        Returns
+        -------
+        None.
+        '''
         #
         # Computer 1-D (xx,yy) coordinates if not computed.
         if len(self.xx) == 0:
@@ -96,9 +108,15 @@ class nisarBase2D():
     # ------------------------------------------------------------------------
 
     def computePixEdgeCornersXYM(self):
-        ''' Return dictionary with corner locations. Note unlike pixel
+        '''
+        Return dictionary with corner locations. Note unlike pixel
         centered xx, x0 etc values, these corners are defined as the outer
-        edges as in a geotiff '''
+        edges as in a geotiff
+        Returns
+        -------
+        corners : dict
+            corners in xy coordinates: {'ll': {'x': xll, 'y': yll}...}.
+        '''
         nx, ny = self.sizeInPixels()
         x0, y0 = self.originInM()
         dx, dy = self.pixSizeInM()
@@ -115,9 +133,17 @@ class nisarBase2D():
         return corners
 
     def computePixEdgeCornersLL(self):
-        ''' Compute the lat/lon corners for the outer corners (e.g. not pixel
-        centered).'''
-        # compute xy corrne
+        '''
+        Return dictionary with corner locations in lat/lon. Note unlike pixel
+        centered values, these corners are defined as the outer
+        edges as in a geotiff
+        Returns
+        -------
+        llcorners : dict
+            corners in lat/lon coordinates:
+                {'ll': {'lat': latll, 'lon': lonll}...}.
+        '''
+        # compute xy corners
         corners = self.computePixEdgeCornersXYM()
         xyproj = pyproj.Proj(f"+init=EPSG:{self.epsg}")
         llproj = pyproj.Proj("+init=EPSG:4326")
@@ -131,14 +157,36 @@ class nisarBase2D():
         return llcorners
 
     def getWKT_PROJ(self, epsgCode):
-        ''' Get the wkt for the image'''
+        '''
+        Get the wkt for the image
+        Parameters
+        ----------
+        epsgCode : int
+            epsg code.
+        Returns
+        -------
+        wkt : str
+            projection info as wkt string:
+                'PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",...'
+        '''
         sr = osr.SpatialReference()
         sr.ImportFromEPSG(epsgCode)
         wkt = sr.ExportToWkt()
         return wkt
 
     def getDomain(self, epsg):
-        ''' Return names of domain based on epsg (antartica or greenland). '''
+        '''
+        Return names of domain name based on epsg (antartica or greenland).
+
+        Parameters
+        ----------
+        epsg : int
+            epsg code.
+        Returns
+        -------
+        domain : str
+            For now either 'greenland' or 'antarctica'.
+        '''
         if epsg is None or epsg == 3413:
             domain = 'greenland'
         elif epsg == 3031:
@@ -152,7 +200,17 @@ class nisarBase2D():
     # -----------------------------------------------------------------------
 
     def _setupInterpolator(self, myVars):
-        ''' Set up interpolation for each variable specified by myVars. '''
+        '''
+        Set up interpolation for each variable specified by myVars.
+        Parameters
+        ----------
+        myVars : list of str
+            list of variable names as strings, e.g. ['vx',...].
+        Returns
+        -------
+        None.
+
+        '''
         if len(self.xx) <= 0:
             self.xyCoordinates()  # Setup coordinates if not done already.
         # XR, so nothing to do.
@@ -170,15 +228,48 @@ class nisarBase2D():
     # -----------------------------------------------------------------------
 
     def interpGeo(self, x, y, myVars, **kwargs):
-        ''' Call appropriate interpolation method '''
+        '''
+        Call appropriate interpolation method for each variable specified by
+        myVars
+        Parameters
+        ----------
+        x : np float array
+            x coordinates in m to interpolate to.
+        y : np float array
+            y coordinates in m to interpolate to.
+        myVars : list of str
+            list of variable names as strings, e.g. ['vx',...].
+        **kwargs : TBD
+            keywords passed through to interpolator.
+        Returns
+        -------
+        np float array
+            Interpolated valutes from x,y locations.
+        '''
         if self.useXR:
             return self._interpXR(x, y, myVars, **kwargs)
         else:
             return self._interpNP(x, y, myVars, **kwargs)
 
     def _toInterp(self, x, y):
-        ''' Return xy values of coorindates that within the image bounds for
-        interpolation. '''
+        '''
+        Return xy values of coordinates that within the image bounds for
+        interpolation.
+        Parameters
+        ----------
+        x : np float array
+            x coordinates in m to interpolate to.
+        y : np float array
+            y coordinates in m to interpolate to.
+        Returns
+        -------
+        x1 : np float array
+            x coordinates for interpolation within image bounds.
+        y1 : np float array
+            y coordinates for interpolation within image bounds.
+        igood : TYPE
+            DESCRIPTION.
+        '''
         # flatten, do bounds check, get locations of good (inbound) points.
         x1, y1 = x.flatten(), y.flatten()
         xgood = np.logical_and(x1 >= self.xx[0], x1 <= self.xx[-1])
@@ -187,8 +278,24 @@ class nisarBase2D():
         return x1[igood], y1[igood], igood
 
     def _interpXR(self, x, y, myVars, **kwargs):
-        ''' Interpolate myVar(y,x) specified myVars where myVars are
-        x arrays. This routine had little testing. '''
+        '''
+        Interpolate myVar(y,x) specified myVars (e.g., ['vx'..]) where myVars
+        are xarrays. This routine had little testing.
+        Parameters
+        ----------
+        x: np float array
+            x coordinates in m to interpolate to.
+        y: np float array
+            y coordinates in m to interpolate to.
+        myVars : list of str
+            list of variable names as strings, e.g. ['vx',...].
+        **kwargs : TBD
+            Keyword pass through to interpolator.
+        Returns
+        -------
+        myResults : float np array
+            Interpolated valutes from x,y locations.
+        '''
         x1, y1, igood = self._toInterp(x, y)
         x1xr = xr.DataArray(x1)
         y1xr = xr.DataArray(y1)
@@ -203,8 +310,24 @@ class nisarBase2D():
         return myResults
 
     def _interpNP(self, x, y, myVars, **kwargs):
-        ''' Interpolate myVar(y,x) specified myVars where myVars are
-        numpy arrays. '''
+        '''
+        Interpolate myVar(y,x) specified myVars (e.g., ['vx'..]) where myVars
+        are nparrays.
+        Parameters
+        ----------
+        x: np float array
+            x coordinates in m to interpolate to.
+        y: np float array
+            y coordinates in m to interpolate to.
+        myVars : list of str
+            list of variable names as strings, e.g. ['vx',...].
+        **kwargs : TBD
+            Keyword pass through to interpolator.
+        Returns
+        -------
+        myResults : float np array
+            Interpolated valutes from x,y locations.
+        '''
         x1, y1, igood = self._toInterp(x, y)
         # Save good points
         xy = np.array([y1, x1]).transpose()  # noqa
@@ -221,8 +344,17 @@ class nisarBase2D():
     # ----------------------------------------------------------------------
 
     def readGeodatFromTiff(self, tiffFile):
-        """ Read geo information (x0,y0,sx,sy,dx,dy) from a tiff file.
-        Assumes PS coordinates """
+        '''
+        Read geo information (x0,y0,sx,sy,dx,dy) from a tiff file.
+        Assumes PS coordinates.
+        Parameters
+        ----------
+        tiffFile : str
+            Name of tiff file.
+        Returns
+        -------
+        None.
+        '''
         if not os.path.exists(tiffFile):
             myError(f"readGeodatFromTiff: {tiffFile} does not exist")
         try:
@@ -233,7 +365,9 @@ class nisarBase2D():
             self.sx, self.sy = ds.RasterXSize,  ds.RasterYSize
             gt = ds.GetGeoTransform()
             self.dx, self.dy = abs(gt[1]), abs(gt[5])
+            # lower left corner corrected to pixel centered values
             self.x0 = (gt[0] + self.dx/2)
+            # y-coord check direction
             if gt[5] < 0:
                 self.y0 = (gt[3] - self.sy * self.dy + self.dy/2)
             else:
@@ -248,8 +382,26 @@ class nisarBase2D():
 
     def writeCloudOptGeo(self, tiffFile, myVar, gdalType=gdal.GDT_Float32,
                          overviews=None, predictor=1, noData=None):
-        ''' Write a cloud optimized geotiff with overviews. '''
-        #
+        '''
+        Write a cloud optimized geotiff with overviews if requested.
+        Parameters
+        ----------
+        tiffFile : str
+            Name of tiff file.
+        myVar : str
+            Name of internal variable (e.g., ".vx").
+        gdalType : gdal type code, optional
+            Gdal type code. The default is gdal.GDT_Float32.
+        overviews : list, optional
+            List of overvew sizes (e.g., [2, 4, 8, 16]). The default is None.
+        predictor : int, optional
+            Predictor used by gdal for compression. The default is 1.
+        noData : optional - same as data, optional
+            No data value. The default is None.
+        Returns
+        -------
+        None.
+        '''
         # use a temp mem driver for CO geo
         driverM = gdal.GetDriverByName("MEM")
         nx, ny = self.sizeInPixels()
@@ -293,11 +445,29 @@ class nisarBase2D():
     # ----------------------------------------------------------------------
 
     def sizeInPixels(self):
-        ''' Return size in pixels.'''
+        '''
+        Return size in pixels
+        Returns
+        -------
+        sx: int
+            x size
+        sy: int
+            y size.
+        '''
         return self.sx, self.sy
 
     def _toKm(func):
-        ''' Decorator for unit conversion '''
+        '''
+        Decorator for unit conversion
+        Parameters
+        ----------
+        func : function
+            DESCRIPTION.
+        Returns
+        -------
+        float
+            Coordinates converted to km.
+        '''
         @functools.wraps(func)
         def convertKM(*args):
             return [x*0.001 for x in func(*args)]
@@ -309,7 +479,13 @@ class nisarBase2D():
 
     @_toKm
     def sizeInKm(self):
-        ''' Return size in kilometers '''
+        '''
+        Using decorator _toKm convert size to km
+        Returns
+        -------
+        sx, sy: float
+            size in km.
+        '''
         return self.sizeInM()
 
     def originInM(self):
@@ -318,25 +494,71 @@ class nisarBase2D():
 
     @_toKm
     def originInKm(self):
-        ''' Return origin in kilometers '''
+        '''
+        Using decorator _toKm convert origin to km
+        Returns
+        -------
+        x0, y0: float
+            origin in km.
+        '''
         return self.originInM()
 
     def boundsInM(self):
-        ''' Return bounds in meters '''
+        '''
+        Determine data bounds in meters
+        Returns
+        -------
+        xmin : float
+            min x (lower left) coordinate.
+        ymin : float
+            min y (lower left) coordinate.
+        xmax : float
+            max x (upper right) coordinate.
+        ymax : float
+            max y (upper right) coordinate.
+        '''
         xmax = (self.x0 + (self.sx - 1) * self.dx)
         ymax = (self.y0 + (self.sy-1)*self.dy)
         return self.x0, self.y0, xmax, ymax
 
     @_toKm
     def boundsInKm(self):
-        ''' Return bounds in kilometers '''
+        '''
+        Determine data bounds in km using _toKM decorator.
+        Returns
+        -------
+        xmin : float
+            min x (lower left) coordinate.
+        ymin : float
+            min y (lower left) coordinate.
+        xmax : float
+            max x (upper right) coordinate.
+        ymax : float
+            max y (upper right) coordinate.
+        '''
         return self.boundsInM()
 
     def pixSizeInM(self):
-        ''' Return size in meters '''
+        '''
+        Return pixel size in m
+        Returns
+        -------
+        dx : float
+            pixel size in x dimension.
+        dy : float
+            pixel size in y dimension.
+        '''
         return self.dx, self.dy
 
     @_toKm
     def pixSizeInKm(self):
-        ''' Return pixel size in kilometers '''
+        '''
+        Return pixel size in km
+        Returns
+        -------
+        dx : float
+            pixel size in x dimension.
+        dy : float
+            pixel size in y dimension.
+        '''
         return self.pixSizeInM()

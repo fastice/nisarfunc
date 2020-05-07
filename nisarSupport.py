@@ -11,14 +11,36 @@ import numpy as np
 import sys
 import os
 
+
 def myError(message):
-    """ print error message and exit """
+    '''
+    Print error message and exit
+    Parameters
+    ----------
+    message : str
+        String with informative error message.
+    Returns
+    -------
+    None.
+    '''
     print(f'\n\t\033[1;31m *** {message} *** \033[0m\n')
     sys.exit()
 
 
 def readGeoTiff(tiffFile, noData=-2.e9):
-    """ read a geotiff file and return the array """
+    '''
+    Read a geotiff file and return the array
+    Parameters
+    ----------
+    tiffFile : str
+        Name of tif file with tif suffix.
+    noData : data dependent, optional
+        No data value. The default is -2.e9.
+    Returns
+    -------
+    arr : data dependent
+        Band from tiff.
+    '''
     try:
         gdal.AllRegister()
         ds = gdal.Open(tiffFile)
@@ -34,17 +56,45 @@ def readGeoTiff(tiffFile, noData=-2.e9):
 
 
 def setKey(myKey, defaultValue, **kwargs):
-    ''' Unpack a keyword from **kwargs and if does not exist
-    return defaultValue '''
+    '''
+    Unpack a keyword from **kwargs and if does not exist
+    return defaultValue.
+    Parameters
+    ----------
+    myKey : str
+        The key of interest.
+    defaultValue : key dependent
+        The default value to return if key does not exist.
+    **kwargs : TBD
+        Keyword passthrough.
+    Returns
+    -------
+    keywordvalue : key dependent
+        Value for that keyword.
+
+    '''
     if myKey in kwargs.keys():
         return kwargs(myKey)
     return defaultValue
 
 
 def parseDatesFromDirName(dirName, dateTemplate, divider):
-    ''' Parse date from dir name with a template such as:
-        Vel-2015-01-01.2015-12-31
-        divider is a character to split the date (e.g, ".")'''
+    '''
+    Parse date from dir name with a template such as:
+    Vel-2015-01-01.2015-12-31
+    Parameters
+    ----------
+    dirName : str
+        Name of the directory.
+    dateTemplate : str
+        Template for dir name. The default is 'Vel-%Y-%m-%d.%Y-%m-%d'.
+    divider : str
+        character that divides up name xyz.date1.date2. The default is '.'.
+    Returns
+    -------
+    dates : [datetime, datetime]
+        First and last dates from meta file.
+    '''
     dates = []
     for dN, dT in zip(dirName.split(divider), dateTemplate.split(divider)):
         print(dN, dT)
@@ -57,7 +107,17 @@ def parseDatesFromDirName(dirName, dateTemplate, divider):
 
 
 def parseDatesFromMeta(metaFile):
-    ''' Read first and last dates meta file. '''
+    '''
+    Parse dates from a GIMP meta file.
+    Parameters
+    ----------
+    metaFile : str, optional
+        metaFile name, if not specified use basename. The default is None.
+    Returns
+    -------
+    dates : [datetime, datetime]
+        First and last dates from meta file.
+    '''
     if not os.path.exists(metaFile):
         myError(f'parseDatesFromMeta: metafile {metaFile} does not exist.')
     fp = open(metaFile)
