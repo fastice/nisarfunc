@@ -13,7 +13,8 @@ import sys
 import copy
 import time
 # import psutil
-import os
+# import os
+from scipy import optimize
 
 
 def whiteNoisePatch(nr, nc, sigma=1.0):
@@ -59,8 +60,8 @@ def correlatedShiftedPatches(nr, nc, dr, dc, rho, overSample=7, sigma=1.0):
         Shifted and decorrelated patch.
     '''
     # compute scale factor for rho
-    alpha = rho**2 / (2. * rho**2 - 1)
-    alpha = alpha - np.sign(alpha) * np.sqrt(alpha**2 - alpha)
+    gamma = rho**2 / (2. * rho**2 - 1)
+    alpha = gamma - np.sign(gamma) * np.sqrt(gamma**2 - gamma)
     # first patch
     patch1 = whiteNoisePatch(nr, nc, sigma=sigma)
     # second patch
@@ -113,6 +114,98 @@ def nccIntPatches(patchS, patchR, ampMatch=False):
     ncc = np.fft.fftshift(ncc)
     #
     return ncc
+
+
+def _fitfunc(p, xp, yp):
+    return p[4] * np.exp(-(xp - p[0])**2 / p[2]**2 - (yp - p[1])**2 / p[3]**2)
+
+
+def _errfunc(p, xp, yp, ccPeak):
+    return _fitfunc(p, xp, yp) - ccPeak
+
+
+def gaussFit(ccPeak, overSampleFactor, debug=False):
+    '''
+    Fit a gaussian to the cross correlation peak.
+
+    Parameters
+    ----------
+    ccPeak : np array
+        Area around correlation peak.
+    overSampleFactor : int
+        Oversample factor (1 or 2).
+    debug : bool, optional
+        Add the fitted retult to the return. The default is False.
+
+    Returns
+    -------
+    rMaxOs: float
+        Oversampled row coordinate.
+    cMaxOs: float
+        Oversampled column coordinate..
+    rhow: float
+        Correlation max as determined by fitted peak.
+    '''
+    rhw, chw = ccPeak.shape[0]/2, ccPeak.shape[1]/2
+    cp, rp = np.meshgrid(np.linspace(-chw, rhw, ccPeak.shape[1]),
+                         np.linspace(-rhw, rhw, ccPeak.shape[0]))
+    p0 = [0, 0, 25, 25, 0.5]
+    p1, success = optimize.leastsq(_errfunc, p0[:],
+                                   args=(rp.flatten(), cp.flatten(),
+                                         ccPeak.flatten()))
+    # oversampled offsets and corr peak from fit
+    rMaxOs, cMaxOs, rhow = p1[0] + rhw, p1[1] + rhw, p1[4]
+    if not debug:
+        return rMaxOs, cMaxOs, rhow
+    # return gaussian for debugging/illustration purposes
+    return rMaxOs, cMaxOs, rhow, _fitfunc(p1, rp, cp)
+
+
+def osSubPixGaussian(cc, overSampleCorr, overSamplePeak, boxS, debug=False):
+    '''
+    Use fit to to Gaussian peak to oversample.
+    Parameters
+    ----------
+     cc : 2d array
+        Integer sampled or 2x oversampled correlation function.
+    overSampleCorr : int
+        OverSample factor for initial cross corr (1x or 2x)
+    overSamplePeak : int
+        Oversample factor (not including any 2x oversample).
+    boxSize : int
+        Size ("radius") of box in non-oversampled pixels around peak to
+        oversample +/- box size.
+    Returns
+    -------
+    dr : float
+        row sub-pixel offset.
+    dc : float
+        column subpixel value.
+    cmax : float
+        max correlation value.
+    ccPeak : 2d np float array
+        Estimated peak.
+    '''
+    boxUse = boxS * overSampleCorr
+    # location of peak in patch
+    rMax, cMax = np.unravel_index(np.argmax(np.abs(cc)),  cc.shape)
+    # get area around peak
+    ccPeak = cc[rMax - boxUse: rMax + boxUse, cMax - boxUse: cMax + boxUse]
+    #
+    ccPeakOs = overSamplePatch(ccPeak, overSample=overSamplePeak)
+    # find peak for subpixel offsets
+    returnValues = gaussFit(np.real(ccPeakOs), overSamplePeak, debug=debug)
+    rMaxOs, cMaxOs, rhow = returnValues[0:3]
+    # Oversampled offsets
+    rMax1 = rMax * overSamplePeak + (rMaxOs - boxUse * overSamplePeak)
+    cMax1 = cMax * overSamplePeak + (cMaxOs - boxUse * overSamplePeak)
+    # Compute final offsets
+    rMaxF = ((rMax1/overSamplePeak) - cc.shape[0] / 2.) / overSampleCorr
+    cMaxF = ((cMax1/overSamplePeak) - cc.shape[1] / 2.) / overSampleCorr
+    # (rMax / overSampleFactor - boxS) * 1. / patchOver
+    if not debug:
+        return rMaxF, cMaxF, np.max(np.abs(cc)), ccPeakOs
+    return rMaxF, cMaxF, np.max(np.abs(cc)), ccPeakOs, returnValues[3]
 
 
 def osSubPix(cc, overSampleCorr, overSamplePeak, boxS):
@@ -213,6 +306,8 @@ def nccPatches(patchS, patchR, ampMatch=False, overSampleCorr=True,
         return np.nan, np.nan, np.nan, cc, []
     #
     dr, dc, cmax, ccPeak = subPix(cc, osFactor, *subPixArgs, **subPixKwArgs)
+    if dr > 2 or dc > 2:
+        return np.nan, np.nan, np.nan, cc, []
     return dr, dc, cmax, cc, ccPeak
 
 
@@ -235,7 +330,7 @@ def overSamplePatch(patch, overSample=7):
     fftZeroPad = np.zeros(osShape, dtype=np.complex64)
     # For now only use even oversample
     if patch.shape[0] % 2 != 0 or patch.shape[0] % 2 != 0:
-        print('use even patch for oversampling')
+        print(f'use even patch for oversampling {patch.shape}')
         exit()
     #
     r0, c0 = int(osShape[0] / 2), int(osShape[1] / 2)  # patch centers
