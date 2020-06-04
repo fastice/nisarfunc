@@ -40,11 +40,35 @@ def whiteNoisePatch(nr, nc, sigma=1.0):
     return noise
 
 
-def correlatedShiftedPatches(nr, nc, dr, dc, rho, overSample=7, sigma=1.0):
+def limitBandwidth(patch, bandwidth):
+    '''
+    Limit bandwidth of a patch to fraction < 1 specified by bandwidth
+
+    Parameters
+    ----------
+    patch : 2D complex data
+        White noise patch.
+    bandwidth : float
+        Fraction of bandwidth to limit to.
+    Returns
+    -------
+    None.
+    '''
+    myFilt = np.zeros(patch.shape)
+    hwr, hwc = int(patch.shape[0]/2), int(patch.shape[1]/2)
+    bwr, bwc = int(hwr * bandwidth), int(hwc * bandwidth)
+    myFilt[hwr - bwr:hwr + bwr - 1, hwc - bwc:hwc + bwc - 1] = 1
+    fftForward = np.fft.fftshift(np.fft.fft2(patch)) * myFilt
+    # inverse transform
+    patch[:] = np.fft.ifft2(np.fft.ifftshift(fftForward))
+
+
+def correlatedShiftedPatches(nr, nc, dr, dc, rho, overSample=7, sigma=1.0,
+                             bandwidth=1.):
     '''
     Parameters
     ----------
-       nr : int
+    nr : int
         number of rows.
     nc : int
         number of columns.
@@ -69,6 +93,9 @@ def correlatedShiftedPatches(nr, nc, dr, dc, rho, overSample=7, sigma=1.0):
     patch2 = alpha * patch1 + (1 - alpha) * decorrNoise
     # shift second patch
     patch2 = patchShift(patch2, dr, dc, overSample=overSample)
+    if bandwidth < 1.:
+        limitBandwidth(patch1, bandwidth)
+        limitBandwidth(patch2, bandwidth)
     return patch1, patch2
 
 
@@ -158,7 +185,7 @@ def gaussFit(ccPeak, overSampleFactor, debug=False):
     if not debug:
         return rMaxOs, cMaxOs, rhow
     # return gaussian for debugging/illustration purposes
-    return rMaxOs, cMaxOs, rhow, _fitfunc(p1, rp, cp)
+    return rMaxOs, cMaxOs, rhow, _fitfunc(p1, rp, cp), p1
 
 
 def osSubPixGaussian(cc, overSampleCorr, overSamplePeak, boxS, debug=False):
