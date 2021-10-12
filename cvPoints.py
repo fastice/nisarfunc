@@ -26,7 +26,7 @@ class cvPoints:
     plotFontSize = 15  # Font size for plots
     legendFontSize = 15  # Font size for legends
 
-    def __init__(self, cvFile=None, epsg=None):
+    def __init__(self, cvFile=None, epsg=None, wktFile=None):
         '''
         Initialize an object to read a cvfile (cal/val points file) and
         manipulate cv points.
@@ -36,6 +36,8 @@ class cvPoints:
             DESCRIPTION. The default is None.
         epsg : TYPE, optional
             DESCRIPTION. The default is None.
+        wktFile : TYPE, optional
+            DESCRIPTION. Wktfile instead of epsg None.
         Returns
         -------
         None.
@@ -52,8 +54,11 @@ class cvPoints:
         self.vx, self.vy, self.vz = np.array([]), np.array([]), np.array([])
         #
         self.setCVFile(cvFile)
+        if wktFile is not None and epsg is not None:
+            myError('Specify epsg or wktfile but not both')
         self.epsg = epsg  # Epsg set 3413 or 3031 depending on if N or S
-        self.llproj = pyproj.Proj("EPSG:4326")  # Used for conversions
+        self.wktFile = wktFile
+        self.llproj = "EPSG:4326"  # Used for conversions
         self.xyproj = None  # Defined once epsg set.
         if cvFile is not None:
             self.readCVs(cvFile=cvFile)
@@ -87,17 +92,30 @@ class cvPoints:
         if not os.path.exists(self.cvFile):
             myError("cvFile: {0:s} does not exist".format(self.cvFile))
 
-    def setEPSG(self):
+    def readWKT(self, wktFile):
+        ''' get wkt from a file '''
+        with open(wktFile, 'r') as fp:
+            return fp.readline()
+
+    def setSRS(self):
         '''
-        Set epsg based on northern or southern lat of the cv points.
+        Set xy SRS proj based on wktFile or epsg,if neither defaults to
+        northern  or southern lat of the cv points.
         Returns
         -------
         None.
         '''
         if len(self.lat) <= 0:
             myError("Cannot set epsg without valid latlon")
-        self.epsg = [3031, 3413][self.lat[0] > 0]
-        self.xyproj = pyproj.Proj(f"EPSG:{self.epsg}")
+        if self.wktFile is not None:
+            wkt = self.readWKT(self.wktFile)
+            self.xyproj = wkt
+        else:
+            if self.epsg is None:
+                self.epsg = [3031, 3413][self.lat[0] > 0]
+            self.xyproj = f"EPSG:{self.epsg}"
+        self.lltoxyXform = pyproj.Transformer.from_crs(self.llproj,
+                                                       self.xyproj)
     #
     # ===================== Cv input/output stuff ============================
     #
@@ -133,7 +151,7 @@ class cvPoints:
         #
         self.vh = np.sqrt(self.vx**2 + self.vy**2)
         #
-        self.setEPSG()
+        self.setSRS()
         self.nocull = np.ones(self.vx.shape, dtype=bool)  # set all to no cull
         self.x, self.y = self.lltoxym(self.lat, self.lon)  # to xy coords
 
@@ -306,7 +324,7 @@ class cvPoints:
             y coordinate in m..
         '''
         if self.xyproj is not None:
-            x, y = pyproj.transform(self.llproj, self.xyproj, lat, lon)
+            x, y = self.lltoxyXform.transform(lat, lon)
             return x, y
         else:
             myError("lltoxy: proj not defined")
@@ -393,7 +411,7 @@ class cvPoints:
         ''' Decorator for plotting locations in range (vmin,vmax). '''
         @functools.wraps(func)
         def plotCVXY(*args, vel=None, ax=None, nSig=3, **kwargs):
-            x, y = func(*args)
+            x, y = func(*args, nSig=nSig)
             #
             if vel is not None:
                 vx, vy, vr = vel.interp(x, y, ['vx', 'vy'])
@@ -422,9 +440,8 @@ class cvPoints:
         '''
         return self.xyVRangem(minv, maxv)
 
-    @_plotCVLocs
-    def plotOutlierLocs(self, minv, maxv, vel, nSig=3):
-        ''' Plot outliers where difference in either velocity component is >
+    def getOutlierLocs(self, minv, maxv, vel, nSig=3):
+        ''' Get outliers where difference in either velocity component is >
         nSig*sigma for points in range (minv,maxv)
         Parameters
         ----------
@@ -442,12 +459,32 @@ class cvPoints:
         x, y = self.xyVRangem(minv, maxv)  # get points in range
         iPts = self.vRangeCVs(minv, maxv)  # Just points in range (minv,vmaxv)
         dvx, dvy, iGood = self.cvDifferences(x, y, iPts, vel)  # get diffs
+
         x, y = x[iGood], y[iGood]  # points in range with valid diffs
         sigX, sigY = np.std(dvx), np.std(dvy)  # Sigmas
         # Find outliers
         iOut = np.logical_or(np.abs(dvx) > nSig * sigX,
                              np.abs(dvy) > nSig * sigY)
         return x[iOut], y[iOut]
+
+    @_plotCVLocs
+    def plotOutlierLocs(self, minv, maxv, vel, nSig=3):
+        ''' Plot outliers where difference in either velocity component is >
+        nSig*sigma for points in range (minv,maxv)
+        Parameters
+        ----------
+        minv : float
+            minimum speed of desired range.
+        maxv : float
+            maximum speed of desired range.
+        vel : nisarVel
+            A nisarVel object
+        Returns
+        -------
+        None
+            DESCRIPTION.
+        '''
+        return self.getOutlierLocs(minv, maxv, vel, nSig=nSig)
 
     #
     # ===================== CV plot differences ===============================

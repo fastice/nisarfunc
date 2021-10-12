@@ -82,7 +82,7 @@ class nisarVel(nisarBase2D):
         self.vxInterp, self.vyInterp, self.vvInterp = None, None, None
         self.exInterp, self.eyInterp = None, None
         self.verbose = verbose
-        self.noDataDict = {'vx': -2.0e9, 'vy': -2.0e9, 'v': -1.0,
+        self.noDataDict = {'vx': -2.0e9, 'vy': -2.0e9, 'vv': -1.0,
                            'ex': -1.0, 'ey': -1.0}
         self.gdalType = gdal.GDT_Float32  # data type for velocity products
 

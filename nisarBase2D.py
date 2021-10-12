@@ -34,7 +34,7 @@ class nisarBase2D():
         self.dx, self.dy = dx, dy  # Pixel size
         self.xx, self.yy = [], []  # Coordinate of image axis ( F(y,x))
         self.xGrid, self.yGrid = [], []  # Grid of coordinate for each pixel
-        self.verbose = verbose  # Print progress messhages
+        self.verbose = verbose  # Print progress messages
         self.epsg = epsg  # EPSG (sussm 3031 and 3413; should work for others)
         self.useXR = useXR  # Use XR arrays rather than numpy (not well tested)
 
@@ -75,9 +75,9 @@ class nisarBase2D():
         '''
         # check specs exist
         if None in (self.x0, self.y0, self.sx, self.sy, self.dx, self.dy):
-            myError(f'nisarVel.xyCoordinates: x0,y0,sx,sy,dx,dy undefined '
-                    '{self.x0},{self.y0},{self.sx},{self.sy},'
-                    '{self.dx},{self.dy}')
+            myError('nisarVel.xyCoordinates: x0,y0,sx,sy,dx,dy undefined '
+                    f'{self.x0},{self.y0},{self.sx},{self.sy},'
+                    f'{self.dx},{self.dy}')
         # x0...x0+(sx-1)*dx, y0...
         self.xx = np.arange(self.x0, self.x0 + int(self.sx) * self.dx, self.dx)
         self.yy = np.arange(self.y0, self.y0 + int(self.sy) * self.dy, self.dy)
@@ -145,14 +145,15 @@ class nisarBase2D():
         '''
         # compute xy corners
         corners = self.computePixEdgeCornersXYM()
-        xyproj = pyproj.Proj(f"+init=EPSG:{self.epsg}")
-        llproj = pyproj.Proj("+init=EPSG:4326")
+        # xyproj = pyproj.Proj(f"EPSG:{self.epsg}")
+        # llproj = pyproj.Proj("EPSG:4326")
+        xytollXform = pyproj.Transformer.from_crs(f"EPSG:{self.epsg}",
+                                                  "EPSG:4326")
         llcorners = {}
         # Loop to do coordinate transforms.
         for myKey in corners.keys():
-            lat, lon = pyproj.transform(xyproj, llproj,
-                                        np.array([corners[myKey]['x']]),
-                                        np.array([corners[myKey]['y']]))
+            lat, lon = xytollXform.transform(np.array([corners[myKey]['x']]),
+                                             np.array([corners[myKey]['y']]))
             llcorners[myKey] = {'lat': lat[0], 'lon': lon[0]}
         return llcorners
 
@@ -332,7 +333,7 @@ class nisarBase2D():
         # Save good points
         xy = np.array([y1, x1]).transpose()  # noqa
         #
-        myResults = [np.full(x.transpose().shape, np.NaN) for v in myVars]
+        myResults = [np.full(x.shape, np.NaN).flatten() for v in myVars]
         for myVar, i in zip(myVars, range(0, len(myVars))):
             myResults[i][igood] = getattr(self, f'{myVar}Interp')(xy)
             myResults[i] = np.reshape(myResults[i], x.shape)
