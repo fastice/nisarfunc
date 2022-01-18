@@ -522,6 +522,41 @@ class nisarBase2D():
         ymax = (self.y0 + (self.sy-1)*self.dy)
         return self.x0, self.y0, xmax, ymax
 
+    def extentInM(self):
+        '''
+        Determine extent [xmin, xmax, ymin, ymax]
+        Returns
+        -------
+        xmin : float
+            min x (lower left) coordinate.
+        xmax : float
+            max x (upper right) coordinate.
+        ymin : float
+            min y (lower left) coordinate.
+        ymax : float
+            max y (upper right) coordinate.
+        '''
+        bounds = self.boundsInM()
+        return bounds[0], bounds[2], bounds[1], bounds[3]
+
+    @_toKm
+    def extentInKm(self):
+        '''
+        Determine extent [xmin, xmax, ymin, ymax]
+        Returns
+        -------
+        xmin : float
+            min x (lower left) coordinate.
+        xmax : float
+            max x (upper right) coordinate.
+        ymin : float
+            min y (lower left) coordinate.
+        ymax : float
+            max y (upper right) coordinate.
+        '''
+        bounds = self.boundsInM()
+        return bounds[0], bounds[2], bounds[1], bounds[3]
+
     @_toKm
     def boundsInKm(self):
         '''

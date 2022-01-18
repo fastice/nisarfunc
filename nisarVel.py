@@ -349,7 +349,7 @@ class nisarVel(nisarBase2D):
         maxVel = min(np.percentile(self.vv[np.isfinite(self.vv)], 99), maxv)
         return math.ceil(maxVel/100.)*100.  # round up to nearest 100
 
-    def displayVel(self, fig=None, maxv=7000):
+    def displayVel(self, axImage=None, fig=None, maxv=7000):
         '''
         Use matplotlib to show velocity in a single subplot with a color
         bar. Clip to absolute max set by maxv, though in practives percentile
@@ -362,28 +362,29 @@ class nisarVel(nisarBase2D):
             max velocity. The default is 7000.
         Returns
         -------
-        figV : matplot lib fig
+        fig : matplot lib fig
             Figure used for plot.
         axImage : matplot lib ax
             Axis used for plot.
         '''
         if fig is None:
             sx, sy = self.sizeInPixels()
-            figV = plt.figure(constrained_layout=True,
-                              figsize=(10.*sx/sy, 10.))
+            fig = plt.figure(constrained_layout=True,
+                             figsize=(10.*sx/sy, 10.))
         #
-        b = self.boundsInKm()  # bounds for plot window
-        axImage = figV.add_subplot(111)
+        # b = self.boundsInKm()  # bounds for plot window
+        if axImage is None:
+            axImage = fig.add_subplot(111)
         divider = make_axes_locatable(axImage)  # Create space for colorbar
         cbAx = divider.append_axes('right', size='5%', pad=0.05)
         pos = axImage.imshow(self.vv, origin='lower', vmin=0,
                              vmax=self.maxPlotV(maxv=maxv),
-                             extent=(b[0], b[2], b[1], b[3]))
-        cb = figV.colorbar(pos, cax=cbAx, orientation='vertical', extend='max')
+                             extent=self.extentInKm())
+        cb = fig.colorbar(pos, cax=cbAx, orientation='vertical', extend='max')
         cb.set_label('Speed (m/yr)', size=self.labelFontSize)
         cb.ax.tick_params(labelsize=self.plotFontSize)
         axImage.set_xlabel('X (km)', size=self.labelFontSize)
         axImage.set_ylabel('Y (km)', size=self.labelFontSize)
         axImage.tick_params(axis='x', labelsize=self.plotFontSize)
         axImage.tick_params(axis='y', labelsize=self.plotFontSize)
-        return figV, axImage
+        return fig, axImage

@@ -52,6 +52,7 @@ class cvPoints:
         self.pound2 = False  # Flag to write pound 2 to output (historical)
         self.header = []  # In dictionary used as header - needs some work
         self.vx, self.vy, self.vz = np.array([]), np.array([]), np.array([])
+        self.weight = np.array([])
         #
         self.setCVFile(cvFile)
         if wktFile is not None and epsg is not None:
@@ -134,19 +135,26 @@ class cvPoints:
         self.setCVFile(cvFile)
         self.checkCVFile()
         #
-        cvCols = [latv, lonv, zv, vxv, vyv, vzv] = [], [], [], [], [], []
+        cvCols = [latv, lonv, zv, vxv, vyv, vzv, weight] = \
+            [], [], [], [], [], [], []
         # loop through file to read points
-        fpIn = open(self.cvFile, 'r')
-        for line in fpIn:
-            if '#' in line and '2' in line:
-                self.pound2 = True
-            if '&' not in line and ';' not in line and '#' not in line:
-                lineFields = [float(x) for x in line.split()[0:6]]
-                for x, y in zip(cvCols, lineFields):
-                    x.append(y)
-        fpIn.close()
+        with open(self.cvFile, 'r') as fpIn:
+            for line in fpIn:
+                if '#' in line and '2' in line:
+                    self.pound2 = True
+                if '&' not in line and ';' not in line and '#' not in line:
+                    lineFields = [float(x) for x in line.split()[0:6]]
+                    weight = 1.
+                    # Update weight with value if present
+                    if len(line.split()) == 7:
+                        weight = float(line.split()[6])
+                    lineFields.append(weight)
+                    # print(lineFields)
+                    for x, y in zip(cvCols, lineFields):
+                        x.append(y)
         # append to any existing points
-        for var, cvCol in zip(['lat', 'lon', 'z', 'vx', 'vy', 'vz'], cvCols):
+        for var, cvCol in \
+                zip(['lat', 'lon', 'z', 'vx', 'vy', 'vz', 'weight'], cvCols):
             setattr(self, f'{var}', np.append(getattr(self, f'{var}'), cvCol))
         #
         self.vh = np.sqrt(self.vx**2 + self.vy**2)
@@ -155,34 +163,45 @@ class cvPoints:
         self.nocull = np.ones(self.vx.shape, dtype=bool)  # set all to no cull
         self.x, self.y = self.lltoxym(self.lat, self.lon)  # to xy coords
 
-    def writeCVs(self, cvFileOut):
+    def writeCVs(self, cvFileOut, fp=None, comment=None, keepOpen=False):
         '''
         Write a CV file as a list of points lat,lon,z,vx,vy,vz with a
-        dict header. Need to update to add header.
         Parameters
         ----------
         cvFileOut : str
             Name of cvFile in not already set. The default is None.
+        optional
+            fpOut: ignore file name an using open file pointer
         Returns
         -------
         None.
 
         '''
-        fpOut = open(cvFileOut, 'w')
+        if comment is not None:
+            self.header.append(comment)
+        if fp is None:
+            fpOut = open(cvFileOut, 'w')
+            if self.pound2:
+                print('# 2', file=fpOut)
+        else:
+            fpOut = fp
         # in case type file that needs this.
         for line in self.header:
             print(f'; {line}', file=fpOut)
-        if self.pound2:
-            print('# 2', file=fpOut)
         #
         myCVFields = zip(
-            self.lat, self.lon, self.z, self.vx, self.vy, self.vz, self.nocull)
-        for lat, lon, z, vx, vy, vz, nocull in myCVFields:
+            self.lat, self.lon, self.z, self.vx, self.vy, self.vz, self.weight,
+            self.nocull)
+        for lat, lon, z, vx, vy, vz, weight, nocull in myCVFields:
             if nocull:  # only print non-culled points
-                print(f'{lat:10.5f} {lon:10.5f} {z:8.1f}'
-                      ' {vx:8.1f} {vy:8.1f} {vz:8.1f}', file=fpOut)
-        print('&', file=fpOut)  # End of data for historical reasons
-        fpOut.close()
+                print(f'{lat:10.5f} {lon:10.5f} {z:8.1f} '
+                      f'{vx:9.2f} {vy:9.2f} {vz:8.5f} {weight:8.3f}',
+                      file=fpOut)
+        if not keepOpen:
+            print('&', file=fpOut)  # End of data for historical reasons
+            fpOut.close()
+        else:
+            return fpOut
     #
     # ===================== CV Select Stuff ============================
     #
@@ -401,7 +420,7 @@ class cvPoints:
         x,y  : nparray
            x and y in km of all CVs.
         '''
-        x, y = self.xyvRangem(minv, maxv)
+        x, y = self.xyVRangem(minv, maxv)
         return x/1000., y/1000.
     #
     # ===================== Plot Cv locations Stuff ========================
@@ -424,7 +443,7 @@ class cvPoints:
         return plotCVXY
 
     @_plotCVLocs
-    def plotVRangeCVLocs(self, minv, maxv):
+    def plotVRangeCVLocs(self, minv, maxv, **kwargs):
         '''
         plot x,y locations for points where maxv > v > min.
         Parameters
@@ -683,24 +702,22 @@ class cvPoints:
         ----------
         cullFile : str
             File name for cull file.The file contains a
-            header dictionary. Subsequent lines are indices to cull.
         Returns
         -------
         cullPoints: nparray
             Indices of culled points.
         '''
-        fp = open(cullFile, 'r')
-        myParams = eval(fp.readline())
-        print(myParams["cvFile"])
-        print(self.cvFile)
-        cullPoints = []
-        for line in fp:
-            cullPoints.append(int(line))
-        if len(cullPoints) != myParams["nBad"]:
-            myError(f'reading culled points expected {myParams["nBad"]}'
-                    ' but only found {len(cullPoints) }')
+        with open(cullFile, 'r') as fp:
+            myParams = eval(fp.readline())
+            print(myParams["cvFile"])
+            print(self.cvFile)
+            cullPoints = []
+            for line in fp:
+                cullPoints.append(int(line))
+            if len(cullPoints) != myParams["nBad"]:
+                myError(f'reading culled points expected {myParams["nBad"]}'
+                        ' but only found {len(cullPoints) }')
         #
-        fp.close()
         return np.array(cullPoints)
 
     def applyCullFile(self, cullFile):
@@ -711,7 +728,6 @@ class cvPoints:
         ----------
         cullFile : str
             File name for cull file.The file contains a
-            header dictionary. Subsequent lines are indices to cull.
         Returns
         -------
         None
@@ -719,5 +735,28 @@ class cvPoints:
         #
         self.header.append(cullFile)
         toCull = self.readCullFile(cullFile)
+        self.applyCull(toCull)
+
+    def setNoCull(self, noCull):
+        ''' Pass in list of points not to cull
+         Parameters
+        ----------
+        cullFile : list of points to not cull (true means keep)
+        '''
+        self.nocull = noCull
+
+    def applyCull(self, toCull):
+        '''
+        Read a cv point cull file and update nocull so that these points
+        can be filtered out if needed.
+        Parameters
+        ----------
+        cullFile : str
+            File name for cull file.The file contains a
+        Returns
+        -------
+        None
+        '''
+        #
         if len(toCull) > 0:
             self.nocull[toCull] = False
