@@ -30,6 +30,6 @@ vcs = "git"
 style = "semver"
 
 [build-system]
-+requires = ["setuptools.py", "poetry-core @ git+https://github.com/python-poetry/poetry-core.git@master"]
-+build-backend = "poetry.core.masonry.api"
+requires = ["setuptools.py", "poetry-core @ git+https://github.com/python-poetry/poetry-core.git@master"]
+build-backend = "poetry.core.masonry.api"
 
