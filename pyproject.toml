@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "gimpfunc"
+name = "nisarfunc"
 version = "0.0.1"
 description = "SAR processing on the Cloud"
 authors = ["Ian Joughin <ian@apl.washington.edu>"]
@@ -10,16 +10,16 @@ repository = "https://github.com/fastice/nisarfunc"
 keywords = ["SAR", "NISAR"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
-dask = "^2021"
-pandas = "^1"
-progressbar2 = "^3"
-numpy = "^1.20.0"
-panel = "^0"
-requests = "^2"
-rioxarray = "^0"
-stackstac = "^0.2"
-xarray = "^0"
+#python = "^3.8"
+#dask = "^2021"
+#pandas = "^1"
+#progressbar2 = "^3"
+#numpy = "^1.20.0"
+#panel = "^0"
+#requests = "^2"
+#rioxarray = "^0"
+#stackstac = "^0.2"
+#xarray = "^0"
 
 [tool.poetry.dev-dependencies]
 ipython = "*"
