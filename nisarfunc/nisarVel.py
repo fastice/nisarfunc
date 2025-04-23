@@ -195,7 +195,7 @@ class nisarVel(nisarBase2D):
         return fileNames
 
     def readDataFromTiff(self, fileNameBase, useVelocity=True, useErrors=False,
-                         noSpeed=True, useXR=False):
+                         noSpeed=True, useXR=False, chunkSize=1024):
         '''
         read in a tiff product fileNameBase.*.tif. If
         useVelocity=True read velocity (e.g, fileNameBase.vx(vy).tif)
@@ -220,6 +220,8 @@ class nisarVel(nisarBase2D):
             Skip interpolate of speed if True. The default is False.
         useXR : bool, optional
             read data as xarrays. The default is False.
+        chunkSize : int, optional
+            Chunksize for xarray. Default is 1024.
         Returns
         -------
         None.
