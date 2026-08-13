@@ -301,7 +301,7 @@ class nisarBase2D():
         x1xr = xr.DataArray(x1)
         y1xr = xr.DataArray(y1)
         #
-        myResults = [np.full(x1.transpose().shape, np.NaN) for x in myVars]
+        myResults = [np.full(x1.transpose().shape, np.nan) for x in myVars]
         for myVar, i in zip(myVars, range(0, len(myVars))):
             tmp = getattr(self,
                           f'{myVar}').interp(x=x1xr, y=y1xr, method='linear')
@@ -333,7 +333,7 @@ class nisarBase2D():
         # Save good points
         xy = np.array([y1, x1]).transpose()  # noqa
         #
-        myResults = [np.full(x.shape, np.NaN).flatten() for v in myVars]
+        myResults = [np.full(x.shape, np.nan).flatten() for v in myVars]
         for myVar, i in zip(myVars, range(0, len(myVars))):
             myResults[i][igood] = getattr(self, f'{myVar}Interp')(xy)
             myResults[i] = np.reshape(myResults[i], x.shape)

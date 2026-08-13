@@ -18,4 +18,4 @@ from nisarfunc.speckleSim import speckleJobs
 from nisarfunc.speckleSim import osSubPix
 from nisarfunc.speckleSim import osSubPixGaussian
 from nisarfunc.speckleSim import gaussFit
-
+from nisarfunc.makeCWISPParFromRSLC import makeCWISPParFromRSLC 
