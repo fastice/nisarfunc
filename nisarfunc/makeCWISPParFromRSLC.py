@@ -11,6 +11,8 @@ template = {
     "center_time": {"value": 30905.71932, "units": "s"}, #xx
     "end_time": {"value": 30974.84254, "units": "s"},
     "line_header_size": {"value": 0, "units": ""},
+    # NISAR SLCs are float; Gamma defaults a missing key to SCOMPLEX (int16)
+    "image_format": {"value": "FCOMPLEX", "units": ""},
     "range_samples": {"value": 67816, "units": ""}, #--
     "azimuth_lines": {"value": 67254, "units": ""}, #--
     "range_looks": {"value": 1, "units": ""},
@@ -133,6 +135,26 @@ def processDoppler(myRSLC, myCW):
     myCW['doppler_polynomial']['value'] = \
         [np.mean(params['frequencyA']['dopplerCentroid']), 0., 0., 0.]
 
+def processEarthGeometry(myRSLC, myCW):
+    ''' Gamma's sar_to_earth_center (|satellite position|) and
+    earth_radius_below_sensor (ellipsoid radius at the geocentric point below
+    the satellite), both at centre time. base_orbit returns NaN when these
+    are 0. '''
+    t = myCW['center_time']['value']
+    t0 = myRSLC.orbit.TimeOfFirstStateVector
+    dt = myRSLC.orbit.StateVectorInterval
+    pos = np.array(myRSLC.orbit.position, dtype='f8')
+    tSV = t0 + dt * np.arange(len(pos))
+    p = np.array([np.interp(t, tSV, pos[:, k]) for k in range(3)])
+    rSat = np.linalg.norm(p)
+    a = myCW['earth_semi_major_axis']['value']
+    b = myCW['earth_semi_minor_axis']['value']
+    latc = np.arcsin(p[2] / rSat)
+    rEarth = a * b / np.sqrt((b * np.cos(latc))**2 + (a * np.sin(latc))**2)
+    myCW['sar_to_earth_center']['value'] = rSat
+    myCW['earth_radius_below_sensor']['value'] = rEarth
+
+
 def printCWInSARFile(myCW, cwFileName):
     with open(cwFileName, 'w') as fp:
         for key in myCW:
@@ -162,6 +184,7 @@ def makeCWISPParFromRSLC(RSLCFile, cwFileName):
     processPRF(myRSLC, myCW)
     processDoppler(myRSLC, myCW)
     processStateVectors(myRSLC, myCW)
+    processEarthGeometry(myRSLC, myCW)
     #
     print('done processing, now writing CW file ... ')
     printCWInSARFile(myCW, cwFileName)
